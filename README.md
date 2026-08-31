@@ -40,6 +40,8 @@ For hls4ml/FPGA workflows/resource estimates and model quantization, we recommen
 * RAM: 50
 * FPGA: 1
 
+**Only 1 person per team can use a FPGA server at the same time**. Please do not train on the FPGA nodes, and do not add both GPUs and a FPGA to your server. **Do not request more than 1 FPGA**.
+
 The region and GPU type should stay as "general". It doesn't matter. 
 
 40 A10 GPUs and 7 Alveo U55C FPGAs are reserved for use during the hackathon. 
@@ -53,26 +55,56 @@ Teams can choose between 4 challenges: 3 based on the [COLLIDE2V](https://huggin
 The data per challenge can be found in the /hack-data/ directory.
 
 ```bash
-/folders
+#collide2v hh->4b challenge
+hack-data/C1_HH4b/train/
+hack-data/C1_HH4b/eval/
+
+#collide2v foundation model challege
+hack-data/C5_foundation_model/train/
+hack-data/C5_foundation_model/eval/
+
+#collide2v robust tagging challenge
+hack-data/C9_robust_tagging/train/
+hack-data/C9_robust_tagging/eval/
+
+#emd2pose motion capture challenge
+hack-data/emg2pose/emg2pose_dataset_full/train/
+hack-data/emg2pose/emg2pose_dataset_full/eval/
+#also a smaller dataset for the tutorial/testing it out
+hack-data/emg2pose/emg2pose_dataset_mini/
 ```
 
-Introductory notebooks are provided for both the COLLIDE2V (collide2v_intro.ipynb) and emg2pose (emg2pose_intro.ipynb) challenges. Please start with those! Once your server starts you can open a terminal and clone this repo to get the intro notebooks:
+**Introductory notebooks** are provided for both the COLLIDE2V ([collide2v_intro.ipynb](https://github.com/quinnanm/fastml26-hackathon/blob/main/collide2v_intro.ipynb)) and emg2pose ([emg2pose_intro.ipynb](https://github.com/quinnanm/fastml26-hackathon/blob/main/emg2pose_intro.ipynb)) challenges. Please start with those! Once your server starts you can open a terminal and clone this repo to get the intro notebooks:
 
 ```bash
-git clone
+git clone https://github.com/quinnanm/fastml26-hackathon.git
 ```
 
 Most dependencies should be included in the images, but a few extras may be needed. Open a terminal, install them with `pip`, and **restart your notebooks after installing new dependencies**. Note you will need to install any dependencies again each time you start a new server. 
 
-The following, for example, is needed for the intro notebooks:
+The following, for example, is needed for the intro notebooks (at least): 
 
-```bash
+```
+# collide2v_intro
+pip install awkward
+
+# emg2pose_intro
+pip install -e emg2pose/
+pip install h5py==3.11.0 hydra-core==1.3.2 omegaconf joblib==1.4.2 tqdm
 ```
 
-
-For FPGA/hls4ml/quantization resources on FPGA image servers, we recommend getting started with the [hls4ml tutorials](https://github.com/fastmachinelearning/hls4ml-tutorial/tree/main), namely 1_getting_started and 2_quantization. From a FPGA server on the JupyterHub, the following is needed to use those tutorials:
+For FPGA/hls4ml/quantization resources on FPGA image servers, we recommend getting started with the [hls4ml tutorials](https://github.com/fastmachinelearning/hls4ml-tutorial/tree/main), namely 1_getting_started and 2_quantization. From a FPGA server on the JupyterHub, the following is needed to use those tutorials (pytorch version as an example, it would be different for tensorflow):
 
 ```bash
+#hls4ml tutorial intro notebooks
+git clone https://github.com/fastmachinelearning/hls4ml-tutorial.git
+
+#pytorch/brevitas dependencies
+pip install numpy scikit-learn pandas matplotlib pydot torch hls4ml brevitas qonnx onnx
+
+#if get XILINX_VITIS path error, add this to top of cell 2:
+import os
+os.environ['XILINX_VITIS'] = '/tools/Xilinx/Vitis/2024.2'
 ```
 
 
