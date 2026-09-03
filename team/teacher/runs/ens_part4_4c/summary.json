@@ -1,0 +1,47 @@
+{
+  "run": "ens_part4_4c",
+  "model": "ensemble",
+  "params": 6670260,
+  "members": {
+    "part_s0": {
+      "eval_auc": 0.92392311235,
+      "eval_auc_tt": 0.8504187860378605,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_s1": {
+      "eval_auc": 0.92385164265,
+      "eval_auc_tt": 0.8502204111541114,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_e25_s2": {
+      "eval_auc": 0.9236420866999999,
+      "eval_auc_tt": 0.8498525089250893,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_e25_d20_s3": {
+      "eval_auc": 0.9235817898000002,
+      "eval_auc_tt": 0.8500711853118532,
+      "model": "part",
+      "params": 1334013
+    },
+    "part4c_s0": {
+      "eval_auc": 0.9245991455500001,
+      "eval_auc_tt": 0.8511041340413403,
+      "model": "part",
+      "params": 1334208
+    }
+  },
+  "eval_auc": 0.925109953,
+  "eval_per_group": {
+    "QCD": 0.9467586534365344,
+    "tt": 0.8522271775717758,
+    "Wjets": 0.97634249100018
+  },
+  "eval_eff": {
+    "0.99": 0.32267,
+    "0.999": 0.09838
+  }
+}

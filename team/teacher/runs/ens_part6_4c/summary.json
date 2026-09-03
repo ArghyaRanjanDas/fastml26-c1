@@ -1,0 +1,59 @@
+{
+  "run": "ens_part6_4c",
+  "model": "ensemble",
+  "params": 9338286,
+  "members": {
+    "part_s0": {
+      "eval_auc": 0.92392311235,
+      "eval_auc_tt": 0.8504187860378605,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_s1": {
+      "eval_auc": 0.92385164265,
+      "eval_auc_tt": 0.8502204111541114,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_e25_s2": {
+      "eval_auc": 0.9236420866999999,
+      "eval_auc_tt": 0.8498525089250893,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_e25_d20_s3": {
+      "eval_auc": 0.9235817898000002,
+      "eval_auc_tt": 0.8500711853118532,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_b4k_s6": {
+      "eval_auc": 0.92338113695,
+      "eval_auc_tt": 0.848960084900849,
+      "model": "part",
+      "params": 1334013
+    },
+    "part_b4k_s7": {
+      "eval_auc": 0.9231783977500001,
+      "eval_auc_tt": 0.8487161107611075,
+      "model": "part",
+      "params": 1334013
+    },
+    "part4c_s0": {
+      "eval_auc": 0.9245991455500001,
+      "eval_auc_tt": 0.8511041340413403,
+      "model": "part",
+      "params": 1334208
+    }
+  },
+  "eval_auc": 0.9250772145,
+  "eval_per_group": {
+    "QCD": 0.9467765493654937,
+    "tt": 0.8520520145201451,
+    "Wjets": 0.9764015398692028
+  },
+  "eval_eff": {
+    "0.99": 0.32155,
+    "0.999": 0.09915
+  }
+}

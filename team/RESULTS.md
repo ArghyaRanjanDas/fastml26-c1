@@ -330,6 +330,106 @@ cross-fitting the targets is unnecessary and the full-cache logits can be used d
   the baseline, not beating it (val AUC 0.9213 at epoch 5 vs 0.9248 final), and finding 3 above
   says the configuration is saturated anyway.
 
+## Phase 2 — a 4-class teacher, and what it adds
+
+The same ParT-lite trunk with a **softmax head over the four processes** (`QCD, HH_4b, tt, Wjets`
+— the column order is `team/data.py` `GROUP_ID`, so the class target *is* the cache's `group.npy`),
+trained with cross-entropy and label smoothing 0.05. Its binary number is derived exactly, with no
+refitting: `logit(HH) − logsumexp(logit(background))` is the log-odds of the softmax's HH
+probability against the pooled background, so it is directly comparable to the binary head's logit.
+Verified against `log(p/(1−p))` of the softmax and shown invariant to a constant shift of all four
+logits.
+
+`part4c_s0` uses seed 0 and every other hyperparameter of `part_s0`, so the head and the loss are
+the only intended differences. It ran 25 epochs rather than 50; `part_s0`'s best epoch was 19 and
+the 25-epoch binary variants landed within 0.0003 of it, so the epoch budget is not the confound.
+
+| run | head | params | **AUC (eval)** | vs QCD | **vs tt** | vs W+jets | eff@99 % | eff@99.9 % |
+|---|---|---|---|---|---|---|---|---|
+| `part_s0` | binary (BCE) | 1,334,013 | 0.92392 | 0.94543 | 0.85042 | 0.97591 | 0.3182 | 0.0926 |
+| **`part4c_s0`** | 4-class (CE) | 1,334,208 | **0.92460** | **0.94675** | **0.85110** | **0.97594** | 0.3161 | 0.0955 |
+| Δ | | +195 | **+0.00068** | +0.00132 | +0.00068 | +0.00003 | | |
+
+**The 4-class head is a small free win.** It beats the binary head on the pooled AUC and on every
+background separately, for 195 extra parameters and half the epochs. Telling the network *which*
+background it is looking at is a richer training signal than "not signal", and the gain is largest
+against QCD (+0.0013) — the class the binary head can most afford to be lazy about, since QCD is
+already the easiest background.
+
+**Where the teacher actually fails**, from the 4-class confusion matrix on the eval slice (rows are
+the true class, normalized; predicted class = argmax over the four logits):
+
+| true \ predicted | QCD | HH_4b | tt | Wjets |
+|---|---|---|---|---|
+| QCD | 0.769 | 0.145 | 0.036 | 0.049 |
+| **HH_4b** | 0.037 | **0.890** | 0.051 | 0.022 |
+| **tt** | 0.065 | **0.398** | 0.508 | 0.028 |
+| Wjets | 0.088 | 0.058 | 0.023 | 0.831 |
+
+Overall 4-class accuracy is 0.796. The tt row is the whole story of this challenge: **40 % of tt
+events are called HH outright**, against 15 % for QCD and 6 % for W+jets. tt is not merely the
+weakest background in AUC, it is the one the teacher genuinely confuses with signal at the decision
+point — a hadronic tt̄ event really does contain four b-ish jets. This is the diagnostic version of
+the vs-tt AUC gap, and it is what any tt-specific feature has to move.
+
+### Two more seeds at a larger batch
+
+With the A100 free, `part_b4k_s6/s7` repeat `part_s0` at **batch 4096** with a √2-scaled learning
+rate (1.4e-3), 30 epochs.
+
+| run | batch | AUC (eval) | vs tt |
+|---|---|---|---|
+| `part_b4k_s6` | 4096 | 0.92338 | 0.84896 |
+| `part_b4k_s7` | 4096 | 0.92318 | 0.84872 |
+| *(batch-2048 seeds, for comparison)* | 2048 | 0.92358 – 0.92392 | 0.84985 – 0.85042 |
+
+**The larger batch cost about 0.0004 AUC** and did not pay for itself: both batch-4096 seeds land
+below all four batch-2048 seeds. √2 LR scaling under-compensates here, so batch 2048 stays the
+recommended setting. The seeds are still useful as ensemble members.
+
+### Ensembles, including the 4-class member
+
+A 4-class member contributes its HH-vs-background log-odds, which is the same quantity the binary
+head emits, so averaging across head types is meaningful rather than a scale mismatch.
+
+| ensemble | members | AUC (eval) | vs QCD | vs tt | vs W+jets |
+|---|---|---|---|---|---|
+| `ens_part4` ← **currently published** | 4 binary seeds | 0.92480 | 0.94636 | 0.85181 | 0.97622 |
+| `ens_part6` | + the 2 batch-4096 seeds | 0.92485 | 0.94650 | 0.85173 | 0.97632 |
+| `ens_part6_4c` | those 6 + `part4c_s0` | 0.92508 | 0.94678 | 0.85205 | 0.97640 |
+| **`ens_part4_4c`** | 4 binary seeds + `part4c_s0` | **0.92511** | 0.94676 | **0.85223** | 0.97634 |
+
+The 4-class model is the most valuable single addition (+0.0003 over `ens_part4`, more than the two
+extra binary seeds contribute), because it is the only member whose errors come from a different
+training objective. The two weaker batch-4096 seeds dilute it slightly, so the best combination is
+the four batch-2048 seeds plus the 4-class model.
+
+**`soft_targets_*.npy` is deliberately NOT updated to `ens_part4_4c`.** The c3 and c1 distillation
+jobs in `team/A100_QUEUE.md` are reading `soft_targets_train1M.npy` right now, and `c3-2` is
+explicitly measuring run-to-run spread across four runs started at different times. Swapping the
+teacher underneath them would make those numbers incomparable, for a teacher gain of +0.0003 that is
+worth ~nothing to students sitting 0.012–0.019 below the teacher. The better logits are on disk at
+`team/teacher/runs/ens_part4_4c/logits_*.npy` and the swap can happen once the distillation lanes
+are quiescent — say the word.
+
+### 4-class soft targets
+
+| file | shape | content |
+|---|---|---|
+| `team/teacher/soft_targets4_train1M.npy` | (2,000,000, 4) | float32 class logits, `train1M` row order |
+| `team/teacher/soft_targets4_train300k.npy` | (599,999, 4) | same, `train300k` |
+| `team/teacher/soft_targets4_eval100k.npy` | (200,000, 4) | same, `eval100k` |
+| `team/teacher/soft_targets4_meta.json` | — | source run, class order, AUCs, usage |
+
+Columns are `['QCD', 'HH_4b', 'tt', 'Wjets']`. Class probabilities are `softmax(logits, axis=1)`;
+the binary score is `logits[:,1] - logsumexp(logits[:,[0,2,3]], axis=1)`; for KD at temperature T
+use `softmax(logits / T, axis=1)`. The binary `soft_targets_*.npy` files are untouched and remain
+byte-identical to what was published in phase 1 — verified against `origin/main`.
+
+These are the targets to use for a **student with a 4-class head**, which is worth trying: the
+confusion matrix says the tt-vs-HH boundary is where the loss is, and a student trained to name the
+background gets a gradient that says so.
+
 ## Reproduce
 
 ```bash
@@ -338,6 +438,10 @@ PY=/work/users/das214/fastml26/venv/bin/python
 $PY train_teacher.py --model part --tag part_s0 --epochs 50 --ema 0.999 --compile --seed 0
 $PY train_teacher.py --model part --tag part_s1 --epochs 50 --ema 0.999 --compile --seed 1
 $PY ensemble.py --runs part_s0 part_s1 part_e25_s2 part_e25_d20_s3 --name ens_part4 --publish
+# phase 2: the 4-class teacher (publishes soft_targets4_*, never touches the binary files)
+$PY train_teacher.py --model part --tag part4c_s0 --n-classes 4 --epochs 25 --ema 0.999 \
+    --compile --seed 0 --publish
+$PY ensemble.py --runs part_s0 part_s1 part_e25_s2 part_e25_d20_s3 part4c_s0 --name ens_part4_4c
 ```
 
 ---

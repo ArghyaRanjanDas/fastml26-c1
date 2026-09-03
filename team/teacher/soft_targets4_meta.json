@@ -1,0 +1,21 @@
+{
+  "source_run": "part4c_s0",
+  "model": "part",
+  "params": 1334208,
+  "n_classes": 4,
+  "eval_auc": 0.9245991455500001,
+  "eval_per_group": {
+    "QCD": 0.9467501075510756,
+    "tt": 0.8511041340413403,
+    "Wjets": 0.9759416547669048
+  },
+  "label_smoothing": 0.05,
+  "class_order": [
+    "QCD",
+    "HH_4b",
+    "tt",
+    "Wjets"
+  ],
+  "format": "float32 (n_rows, 4) class logits, columns ['QCD', 'HH_4b', 'tt', 'Wjets'] (= team/data.py GROUP_ID order), rows in team/cache/<tag>/X.npy order",
+  "usage": "class probabilities = softmax(logits, axis=1); binary HH-vs-background score = logits[:,1] - logsumexp(logits[:,[0,2,3]], axis=1); for KD at temperature T use softmax(logits / T, axis=1)"
+}
