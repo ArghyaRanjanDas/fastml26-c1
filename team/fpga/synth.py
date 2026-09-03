@@ -55,8 +55,14 @@ model.summary(print_fn=lambda s: print("  " + s))
 nparams = model.count_params(); print(f"params: {nparams}")
 
 if a.weights:  # map torch state_dict -> keras (Linear weight is (out,in); Conv1D k=1 wants (1,in,out))
-    import torch
-    sd = torch.load(a.weights, map_location="cpu")
+    if a.weights.endswith(".npz"):   # torch-free path: dict of numpy arrays exported on the training box
+        z = np.load(a.weights); sd = {k: z[k] for k in z.files}
+        class _T:  # minimal shim so sd[k].numpy() works below
+            pass
+        sd = {k: type("A", (), {"numpy": (lambda v: (lambda: v))(v)})() for k, v in sd.items()}
+    else:
+        import torch
+        sd = torch.load(a.weights, map_location="cpu")
     keys = [k for k in sd if k.endswith("weight")]
     print("torch weight keys:", keys)
     li = 0
