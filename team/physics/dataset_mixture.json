@@ -1,0 +1,76 @@
+{
+ "eval": {
+  "HH_4b": {
+   "group": "HH_4b",
+   "files": 40,
+   "events": 1000384
+  },
+  "QCD_HT250toInf": {
+   "group": "QCD",
+   "files": 4,
+   "events": 100482
+  },
+  "tt0123j_5f_ckm_LO_MLM_hadronic": {
+   "group": "tt",
+   "files": 8,
+   "events": 200327
+  },
+  "tt0123j_5f_ckm_LO_MLM_leptonic": {
+   "group": "tt",
+   "files": 8,
+   "events": 200111
+  },
+  "tt0123j_5f_ckm_LO_MLM_semiLeptonic": {
+   "group": "tt",
+   "files": 8,
+   "events": 200110
+  },
+  "WJetsToLNu_13TeV-madgraphMLM-pythia8": {
+   "group": "Wjets",
+   "files": 8,
+   "events": 200281
+  },
+  "WJetsToQQ_13TeV-madgraphMLM-pythia8": {
+   "group": "Wjets",
+   "files": 8,
+   "events": 200531
+  }
+ },
+ "train": {
+  "HH_4b": {
+   "group": "HH_4b",
+   "files": 334,
+   "events": 9003474
+  },
+  "QCD_HT250toInf": {
+   "group": "QCD",
+   "files": 29,
+   "events": 902592
+  },
+  "tt0123j_5f_ckm_LO_MLM_hadronic": {
+   "group": "tt",
+   "files": 68,
+   "events": 1803430
+  },
+  "tt0123j_5f_ckm_LO_MLM_leptonic": {
+   "group": "tt",
+   "files": 68,
+   "events": 1801374
+  },
+  "tt0123j_5f_ckm_LO_MLM_semiLeptonic": {
+   "group": "tt",
+   "files": 68,
+   "events": 1801364
+  },
+  "WJetsToLNu_13TeV-madgraphMLM-pythia8": {
+   "group": "Wjets",
+   "files": 67,
+   "events": 1803017
+  },
+  "WJetsToQQ_13TeV-madgraphMLM-pythia8": {
+   "group": "Wjets",
+   "files": 67,
+   "events": 1805576
+  }
+ }
+}
