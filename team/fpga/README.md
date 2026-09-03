@@ -6,7 +6,8 @@ hls4ml (Vitis backend, io_parallel, ap_fixed<16,6> default) and runs Vitis HLS c
 for `xcu200-fsgd2104-2-e` at 200 MHz. Output: `hls_<tag>/summary.json` with LUT/FF/DSP/BRAM
 and best/worst latency (cycles) — the numbers for the Friday slide.
 
-Runs INSIDE the hackathon pod (the GPU image ships Xilinx tools; hls4ml 1.3 lives in `~/hlsenv`):
+Runs on the hub's **FPGA image** server (profile with FPGA=1, GPUs=0, 4 cores — the only image
+that has `/tools/Xilinx`; one FPGA server per team, do not train there). hls4ml 1.3 via `~/hlsenv`:
 ```
 source /tools/Xilinx/Vivado/2023.1/settings64.sh   # per hackathon README
 export XILINX_VITIS=/tools/Xilinx/Vitis/2024.2
