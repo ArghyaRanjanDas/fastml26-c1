@@ -113,6 +113,9 @@ def main():
     ap.add_argument("--phi", default="64,32,16")
     ap.add_argument("--rho", default="256,128")
     ap.add_argument("--dropout", type=float, default=0.0)
+    ap.add_argument("--n-particles-use", type=int, default=None,
+                    help="feed only the leading N candidates to phi (cache stays at 16). "
+                         "Halving particles halves the phi cost, which is the FPGA bill.")
     ap.add_argument("--event-scale", type=float, default=1.0,
                     help="fixed multiplier on the event features at the concat point")
     ap.add_argument("--pool-norm", action="store_true",
@@ -144,6 +147,11 @@ def main():
     build_cache(args.eval_tag, "eval", args.n_eval_signal, args.n_eval_background)
     Xtr, Ftr, ytr, gtr, meta_tr = load_cache(args.train_tag)
     Xev, Fev, yev, gev, meta_ev = load_cache(args.eval_tag)
+    if args.n_particles_use:
+        # candidates are pT-sorted descending, so a head slice is the leading N.
+        # Event features stay computed from the full 16 -- they are event-level
+        # quantities and cost nothing per particle in firmware.
+        Xtr, Xev = Xtr[:, :args.n_particles_use], Xev[:, :args.n_particles_use]
     print(f"train: {Xtr.shape} + {Ftr.shape}   eval(held-out): {Xev.shape} + {Fev.shape}")
 
     rng = np.random.default_rng(args.seed)
@@ -169,10 +177,19 @@ def main():
         event_scale=args.event_scale, pool_norm=args.pool_norm,
     ).to(device)
     n_params = count_params(model)
+    # phi runs once per particle, so this product -- not the parameter count --
+    # is what sets DSP/LUT usage on the FPGA.
+    pd, d0 = dims(args.phi), n_features
+    phi_macs = 0
+    for h in pd:
+        phi_macs += d0 * h
+        d0 = h
+    phi_macs *= n_particles
     print(f"\nrun '{run}'  model={args.model}  phi={args.phi}  rho={args.rho}  "
           f"dropout={args.dropout}  event_features={use_evt}  "
           f"event_scale={args.event_scale}  pool_norm={args.pool_norm}")
-    print(f"trainable params: {n_params:,}")
+    print(f"trainable params: {n_params:,}   phi MACs/event: {phi_macs:,} "
+          f"({n_particles} particles x {phi_macs // n_particles})")
 
     loader = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(Xtr_t, Ftr_t, ytr_t),
@@ -230,7 +247,8 @@ def main():
                    dropout=args.dropout, use_event_features=use_evt,
                    event_scale=args.event_scale, pool_norm=args.pool_norm,
                    event_feature_names=list(EVENT_FEATURES) if use_evt else [],
-                   params=n_params, eval_auc=eval_auc, val_auc=float(best_auc),
+                   params=n_params, phi_macs=phi_macs, n_particles=n_particles,
+                   n_particles_use=args.n_particles_use, eval_auc=eval_auc, val_auc=float(best_auc),
                    per_background_auc=per_group, signal_eff=eff,
                    epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
                    train_meta=meta_tr, eval_meta=meta_ev, timing=timing, history=history)
@@ -239,7 +257,8 @@ def main():
 
     print("\n" + "=" * 66)
     print(f"  {run}: BINARY AUC (HH_4b vs background, eval slice) = {eval_auc:.5f}")
-    print(f"  params = {n_params:,}   |   {timing['cpu_single_event_us']:.1f} us/event (CPU, batch 1)")
+    print(f"  params = {n_params:,}  phi_macs = {phi_macs:,}  particles = {n_particles}"
+          f"   |   {timing['cpu_single_event_us']:.1f} us/event (CPU, batch 1)")
     print("=" * 66)
 
 

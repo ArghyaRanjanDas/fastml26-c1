@@ -1,0 +1,119 @@
+{
+  "phi": [
+    64,
+    32,
+    16
+  ],
+  "rho": [
+    16,
+    8
+  ],
+  "n_features": 5,
+  "n_particles": 16,
+  "n_event_features": 11,
+  "run": "A3e_3k",
+  "params": 3585,
+  "eval_auc": 0.8861786618999999,
+  "architecture": {
+    "phi_activation": "relu",
+    "rho_activation": "relu",
+    "output_activation": "sigmoid",
+    "pooling": "mean (GlobalAveragePooling1D over particles)",
+    "event_features_concat": "after pooling",
+    "batchnorm": "folded into the first rho Linear; none to synthesize",
+    "layer_order": [
+      "phi.0.weight",
+      "phi.2.weight",
+      "phi.4.weight",
+      "rho.0.weight",
+      "rho.2.weight",
+      "out.weight"
+    ]
+  },
+  "particle_features": [
+    "log1p(pt)/8",
+    "eta/4",
+    "clip(dxy,+-2)/2",
+    "cos(phi)",
+    "sin(phi)"
+  ],
+  "particle_norm": {
+    "pt_log_scale": 8.0,
+    "eta_scale": 4.0,
+    "dxy_clip": 2.0
+  },
+  "particle_ordering": "leading n_particles candidates by descending pT",
+  "event_feature_names": [
+    "ht",
+    "lead_pt1",
+    "lead_pt2",
+    "lead_pt3",
+    "lead_pt4",
+    "n_cand",
+    "sum_abs_dxy",
+    "max_abs_dxy",
+    "mean_abs_dxy",
+    "m2",
+    "m4"
+  ],
+  "event_feature_norm": {
+    "ht": {
+      "transform": "log1p",
+      "mean": 5.4634,
+      "std": 0.4903
+    },
+    "lead_pt1": {
+      "transform": "log1p",
+      "mean": 3.6467,
+      "std": 0.6996
+    },
+    "lead_pt2": {
+      "transform": "log1p",
+      "mean": 3.2596,
+      "std": 0.6106
+    },
+    "lead_pt3": {
+      "transform": "log1p",
+      "mean": 3.0494,
+      "std": 0.5573
+    },
+    "lead_pt4": {
+      "transform": "log1p",
+      "mean": 2.9041,
+      "std": 0.5187
+    },
+    "n_cand": {
+      "transform": "linear",
+      "mean": 16.0,
+      "std": 0.0
+    },
+    "sum_abs_dxy": {
+      "transform": "log1p",
+      "mean": 0.366,
+      "std": 0.441
+    },
+    "max_abs_dxy": {
+      "transform": "log1p",
+      "mean": 0.251,
+      "std": 0.3318
+    },
+    "mean_abs_dxy": {
+      "transform": "linear",
+      "mean": 0.0385,
+      "std": 0.062
+    },
+    "m2": {
+      "transform": "log1p",
+      "mean": 3.4064,
+      "std": 1.5627
+    },
+    "m4": {
+      "transform": "log1p",
+      "mean": 4.8331,
+      "std": 0.8401
+    }
+  },
+  "event_feature_clip": 5.0,
+  "event_features_computed_from_n_candidates": 16,
+  "fold_check_max_abs_diff": 1.4901161193847656e-06
+}

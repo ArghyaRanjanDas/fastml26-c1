@@ -21,3 +21,4 @@ preprocessing/logs/
 # team/ artefacts: cached parquet slices and raw score dumps
 team/cache/
 team/runs/*.npy
+team/*.log
