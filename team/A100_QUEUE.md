@@ -55,7 +55,7 @@ FPGA AUC — no closure loss to budget for.
 
 ```bash
 cd /work/users/das214/fastml26/fastml26-c1/team/attn
-for b in 3e-6 1e-5 3e-5 1e-4 3e-4; do
+for b in 1e-7 3e-7 1e-6 3e-6; do
   KERAS_BACKEND=torch ../../../venv/bin/python train_attn.py \
       --tag q_b2_b$b --quantized --init-from a_d16_b2 --beta0 $b --beta-ramp 5 \
       --train-tag train1M --epochs 40 --lr 1e-3 > logs_q_b2_b$b.log 2>&1
@@ -73,9 +73,15 @@ git add -A runs && git commit -m "c3-1: QAT beta sweep on A100" && git push
 Expected: **~2.5 h per beta, ~12 h for the five** — corrected after measuring it on the
 A10: HGQ2 QAT costs ~7 min/epoch on 2M events (vs ~40 s/epoch for the float model), because
 every weight and every activation carries its own trainable bit width. If that is too much
-of the queue, **run `3e-5` and `1e-4` first and push those two before starting the rest** —
+of the queue, **run `3e-7` and `1e-6` first and push those two before starting the rest** —
 they are the two most likely to land near the ~350k-EBOPs target, and two points plus the
-unregularized 2.36M-EBOPs starting value already give the shape of the curve. The warm
+unregularized 2.36M-EBOPs starting value already give the shape of the curve.
+
+**Beta range corrected 2026-09-04 (this block first said 3e-6 … 3e-4 — do not use those).**
+Measured on the A10: the unregularized model sits at 2.36M EBOPs, and `beta0=1e-5` drives it
+to 29k EBOPs by epoch 5 with val AUC collapsing 0.9026 → 0.8581. beta multiplies EBOPs
+directly in the loss, so 1e-5 x 2.4M = 24 against a BCE of ~1.8 — three orders of magnitude
+too strong. The useful range is 1e-7 to 3e-6. The warm
 start converges fast (epoch 1 is already at val AUC 0.9026), so 40 epochs is generous;
 drop to `--epochs 20` if the queue is busy. Report the (beta, AUC, EBOPs, vs-tt) table.
 
