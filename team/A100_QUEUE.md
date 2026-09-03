@@ -70,7 +70,14 @@ done
 git add -A runs && git commit -m "c3-1: QAT beta sweep on A100" && git push
 ```
 
-Expected: ~25 min per beta, **~2 h total**. Report the (beta, AUC, EBOPs, vs-tt) table.
+Expected: **~2.5 h per beta, ~12 h for the five** — corrected after measuring it on the
+A10: HGQ2 QAT costs ~7 min/epoch on 2M events (vs ~40 s/epoch for the float model), because
+every weight and every activation carries its own trainable bit width. If that is too much
+of the queue, **run `3e-5` and `1e-4` first and push those two before starting the rest** —
+they are the two most likely to land near the ~350k-EBOPs target, and two points plus the
+unregularized 2.36M-EBOPs starting value already give the shape of the curve. The warm
+start converges fast (epoch 1 is already at val AUC 0.9026), so 40 epochs is generous;
+drop to `--epochs 20` if the queue is busy. Report the (beta, AUC, EBOPs, vs-tt) table.
 
 ### c3-2 — how far the float attention student goes with more capacity + time
 
