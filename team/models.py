@@ -55,6 +55,68 @@ class DeepSet(nn.Module):
         return self.out(self.embed(x)).squeeze(-1)
 
 
+class DeepSetPlus(nn.Module):
+    """DeepSet with event-level features concatenated *after* pooling.
+
+    phi() runs per particle and is mean-pooled to a fixed vector; the 11
+    event-level quantities (HT, leading-4 pT, n_cand, |dxy| summaries, m2, m4)
+    are appended to that pooled vector before rho().  Injecting them after the
+    pool is what makes them cheap in firmware: they are computed once per event
+    from quantities an L1 trigger already has, and they do not multiply into the
+    16x-replicated phi() block.
+
+    rho_dims is the full list of hidden widths; the final Linear(-, 1) is added
+    on top, so rho_dims=(256, 128) means 256 -> 128 -> 1.
+    """
+
+    def __init__(self, n_features: int = 5, n_event_features: int = 11,
+                 phi_dims=(64, 32, 16), rho_dims=(256, 128),
+                 dropout: float = 0.0, pool: str = "mean",
+                 use_event_features: bool = True, event_scale: float = 1.0,
+                 pool_norm: bool = False):
+        super().__init__()
+        self.pool = pool
+        self.use_event_features = use_event_features
+        self.n_event_features = n_event_features if use_event_features else 0
+        # The mean-pooled phi output lands around |h| ~ 0.11 while standardized
+        # event features sit at |f| ~ 0.67, so a naive concat lets the event
+        # features drive rho ~5x harder and the phi branch never trains properly.
+        # Either knob fixes the imbalance; pool_norm is a BatchNorm1d, which at
+        # inference is a fixed per-channel affine and folds into the neighbouring
+        # Linear, so it costs nothing in firmware.
+        self.event_scale = event_scale
+        self.pool_norm = pool_norm
+
+        layers, d = [], n_features
+        for i, h in enumerate(phi_dims):
+            layers += [nn.Linear(d, h), nn.ReLU()]
+            if dropout > 0 and i < len(phi_dims) - 1:
+                layers += [nn.Dropout(dropout)]
+            d = h
+        self.phi = nn.Sequential(*layers)
+        self.pooled_dim = d
+        self.norm = nn.BatchNorm1d(d) if pool_norm else nn.Identity()
+
+        layers, d = [], d + self.n_event_features
+        for i, h in enumerate(rho_dims):
+            layers += [nn.Linear(d, h), nn.ReLU()]
+            if dropout > 0 and i < len(rho_dims) - 1:
+                layers += [nn.Dropout(dropout)]
+            d = h
+        self.rho = nn.Sequential(*layers)
+        self.out = nn.Linear(d, 1)
+
+    def forward(self, x: torch.Tensor, f: torch.Tensor | None = None) -> torch.Tensor:
+        h = self.phi(x)
+        h = h.mean(dim=1) if self.pool == "mean" else h.sum(dim=1)
+        h = self.norm(h)
+        if self.use_event_features:
+            if f is None:
+                raise ValueError("model was built with use_event_features=True but got f=None")
+            h = torch.cat([h, f * self.event_scale], dim=1)
+        return self.out(self.rho(h)).squeeze(-1)
+
+
 class SmallMLP(nn.Module):
     """Flattened-input MLP, kept as an FPGA-friendly sanity baseline."""
 
@@ -74,7 +136,7 @@ class SmallMLP(nn.Module):
         return self.out(self.body(x)).squeeze(-1)
 
 
-MODELS = {"deepset": DeepSet, "mlp": SmallMLP}
+MODELS = {"deepset": DeepSet, "deepset_plus": DeepSetPlus, "mlp": SmallMLP}
 
 
 def count_params(model: nn.Module) -> int:

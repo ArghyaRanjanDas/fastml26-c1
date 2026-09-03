@@ -89,6 +89,127 @@ def preprocess(pt: np.ndarray, eta: np.ndarray, phi: np.ndarray, dxy: np.ndarray
     return out
 
 
+# ------------------------------------------------------- event-level features
+
+# Names in the order they appear in the feature vector.  Anything reading the
+# exported model must use this exact order.
+EVENT_FEATURES = (
+    "ht",              # scalar sum of the kept candidate pT
+    "lead_pt1", "lead_pt2", "lead_pt3", "lead_pt4",
+    "n_cand",          # number of non-empty candidate slots
+    "sum_abs_dxy", "max_abs_dxy", "mean_abs_dxy",
+    "m2",              # invariant mass of the leading 2 candidates (massless approx)
+    "m4",              # invariant mass of the leading 4 candidates (massless approx)
+)
+N_EVENT_FEATURES = len(EVENT_FEATURES)
+
+# Per feature: the shape-fixing transform applied to the physical value.
+# "log1p" -> log1p(x), "linear" -> x.  A second, standardizing affine step
+# follows (EVENT_STANDARDIZE); both are fixed constants for the same reason the
+# particle scalings are -- the firmware needs them baked in and train/inference
+# must agree.
+EVENT_TRANSFORM = {
+    "ht": "log1p",
+    "lead_pt1": "log1p", "lead_pt2": "log1p", "lead_pt3": "log1p", "lead_pt4": "log1p",
+    "n_cand": "linear",
+    "sum_abs_dxy": "log1p",
+    "max_abs_dxy": "log1p",
+    "mean_abs_dxy": "linear",
+    "m2": "log1p",
+    "m4": "log1p",
+}
+
+# (mean, std) of the transformed value, measured once over the 600k-event
+# train300k mixture and then frozen -- see `python data.py --fit-event-norm`.
+# Squashing these into [0,1] instead (the first thing we tried) leaves features
+# like ht at mean 0.69 / std 0.06, which measurably *hurt* the AUC; standardizing
+# is what makes the event features actually usable by the network.
+EVENT_STANDARDIZE = {
+    "ht": (5.4634, 0.4903),
+    "lead_pt1": (3.6467, 0.6996),
+    "lead_pt2": (3.2596, 0.6106),
+    "lead_pt3": (3.0494, 0.5573),
+    "lead_pt4": (2.9041, 0.5187),
+    "n_cand": (16.0000, 0.0000),
+    "sum_abs_dxy": (0.3660, 0.4410),
+    "max_abs_dxy": (0.2510, 0.3318),
+    "mean_abs_dxy": (0.0385, 0.0620),
+    "m2": (3.4064, 1.5627),
+    "m4": (4.8331, 0.8401),
+}
+EVENT_CLIP = 5.0   # standardized features are clipped to +/- this
+
+
+def _inv_mass(pt, eta, phi, mask, k):
+    """Invariant mass of the leading `k` candidates, massless approximation.
+
+    Candidates arrive already sorted by descending pT, so a plain leading-k slice
+    is the right selection.  Empty slots are masked to zero so they add nothing
+    to the four-vector sum.
+    """
+    s = slice(0, k)
+    m = mask[:, s]
+    p, e, f = pt[:, s] * m, eta[:, s], phi[:, s]
+    E = (p * np.cosh(e)).sum(1)
+    px = (p * np.cos(f)).sum(1)
+    py = (p * np.sin(f)).sum(1)
+    pz = (p * np.sinh(e)).sum(1)
+    return np.sqrt(np.maximum(E * E - px * px - py * py - pz * pz, 0.0))
+
+
+def event_features(pt, eta, phi, dxy):
+    """(N, P) raw per-field arrays -> (N, 11) normalized event-level features.
+
+    Computed from *physical* units before the per-particle scaling, then squashed
+    then standardized with the fixed EVENT_STANDARDIZE constants.
+    """
+    mask = (pt > 0.0).astype(np.float32)
+    n_cand = mask.sum(1)
+    abs_dxy = np.abs(dxy) * mask
+
+    lead = np.zeros((len(pt), 4), dtype=np.float32)
+    k = min(4, pt.shape[1])
+    lead[:, :k] = pt[:, :k] * mask[:, :k]
+
+    raw = {
+        "ht": (pt * mask).sum(1),
+        "lead_pt1": lead[:, 0], "lead_pt2": lead[:, 1],
+        "lead_pt3": lead[:, 2], "lead_pt4": lead[:, 3],
+        "n_cand": n_cand,
+        "sum_abs_dxy": abs_dxy.sum(1),
+        "max_abs_dxy": abs_dxy.max(1),
+        "mean_abs_dxy": abs_dxy.sum(1) / np.maximum(n_cand, 1.0),
+        "m2": _inv_mass(pt, eta, phi, mask, 2),
+        "m4": _inv_mass(pt, eta, phi, mask, 4),
+    }
+
+    return standardize_event_features(raw_event_features(raw))
+
+
+def raw_event_features(raw: dict) -> np.ndarray:
+    """Apply only the per-feature log1p/linear transform, no standardization."""
+    out = np.empty((len(raw["ht"]), N_EVENT_FEATURES), dtype=np.float32)
+    for i, name in enumerate(EVENT_FEATURES):
+        v = raw[name].astype(np.float32)
+        out[:, i] = np.log1p(np.maximum(v, 0.0)) if EVENT_TRANSFORM[name] == "log1p" else v
+    return out
+
+
+def standardize_event_features(t: np.ndarray) -> np.ndarray:
+    """(N, 11) transformed features -> zero-mean/unit-variance, clipped.
+
+    A feature with zero recorded spread (n_cand is identically 16 whenever all
+    16 candidate slots are filled, which is every event in this dataset) is
+    emitted as 0 rather than dividing by zero: it is a dead input, kept because
+    it stops being dead the moment we lower N_PARTICLES or apply a pT threshold.
+    """
+    out = np.empty_like(t)
+    for i, name in enumerate(EVENT_FEATURES):
+        mean, std = EVENT_STANDARDIZE[name]
+        out[:, i] = 0.0 if std < 1e-6 else np.clip((t[:, i] - mean) / std, -EVENT_CLIP, EVENT_CLIP)
+    return out
+
+
 # ------------------------------------------------------------------- streaming
 
 def _pad(cands: ak.Array, field: str, n_particles: int) -> np.ndarray:
@@ -103,9 +224,10 @@ def stream_process(
     batch_size: int = 20_000,
     skip_files: int = 0,
 ):
-    """Yield (X, y) chunks from a process directory until `max_events` is reached.
+    """Yield (X, F, y) chunks from a process directory until `max_events` is reached.
 
-    X is (n, n_particles, 5) float32, y is (n,) int8 holding the dataset label.
+    X is (n, n_particles, 5) float32 per-particle input, F is (n, 11) float32
+    event-level features, y is (n,) int8 holding the dataset label.
     """
     files = sorted(process_dir.glob(f"{process_dir.name}_*.parquet"))[skip_files:]
     if not files:
@@ -121,11 +243,12 @@ def stream_process(
             cands = arr["L1T_PUPPIPart"]
             fields = {f: _pad(cands, f, n_particles) for f in CAND_FIELDS}
             X = preprocess(fields["pt"], fields["eta"], fields["phi"], fields["dxy"])
+            F = event_features(fields["pt"], fields["eta"], fields["phi"], fields["dxy"])
             y = ak.to_numpy(arr["label"]).astype(np.int8)
 
             take = min(len(X), max_events - seen)
             seen += take
-            yield X[:take], y[:take]
+            yield X[:take], F[:take], y[:take]
             if seen >= max_events:
                 return
 
@@ -140,11 +263,12 @@ def load_split(
 ):
     """Load a capped, mixed signal+background sample from train/ or eval/.
 
-    Returns (X, y_binary, group) where y_binary is 1 for HH_4b and 0 otherwise,
-    and group is the coarse process group id (for per-background AUC).
+    Returns (X, F, y_binary, group): per-particle inputs, event-level features,
+    the binary target (1 for HH_4b), and the coarse process group id used for
+    the per-background AUC breakdown.
     """
     root = DATA_ROOT / split
-    Xs, ys, gs = [], [], []
+    Xs, Fs, ys, gs = [], [], [], []
 
     budgets = [(p, n_signal) for p in SIGNAL]
     budgets += [(p, int(round(n_background * p.weight / 3.0))) for p in BACKGROUND]
@@ -155,41 +279,52 @@ def load_split(
         chunks = list(stream_process(root / proc.directory, budget, n_particles,
                                      skip_files=skip_files))
         X = np.concatenate([c[0] for c in chunks])
-        y = np.concatenate([c[1] for c in chunks])
+        F = np.concatenate([c[1] for c in chunks])
+        y = np.concatenate([c[2] for c in chunks])
         Xs.append(X)
+        Fs.append(F)
         ys.append(y)
         gs.append(np.full(len(X), GROUP_ID[proc.group], dtype=np.int8))
         if verbose:
             print(f"  {split}/{proc.directory:<44s} {len(X):>8d} events (label {int(y[0])})", flush=True)
 
     X = np.concatenate(Xs)
+    F = np.concatenate(Fs)
     y_raw = np.concatenate(ys)
     group = np.concatenate(gs)
     y = (y_raw == LABEL_HH).astype(np.float32)
-    return X, y, group
+    return X, F, y, group
 
 
 # ----------------------------------------------------------------------- cache
 
+CACHE_VERSION = 2   # v2 added the event-level feature array
+
+
 def cache_paths(tag: str):
     d = CACHE_ROOT / tag
-    return d / "X.npy", d / "y.npy", d / "group.npy", d / "meta.json"
+    return d / "X.npy", d / "F.npy", d / "y.npy", d / "group.npy", d / "meta.json"
 
 
 def build_cache(tag: str, split: str, n_signal: int, n_background: int,
                 n_particles: int = N_PARTICLES, skip_files: int = 0, force: bool = False):
-    Xp, yp, gp, mp = cache_paths(tag)
+    Xp, Fp, yp, gp, mp = cache_paths(tag)
     if mp.exists() and not force:
-        print(f"cache '{tag}' already exists at {Xp.parent} (use --force to rebuild)")
-        return
+        stale = json.loads(mp.read_text()).get("version", 1) < CACHE_VERSION
+        if not stale:
+            print(f"cache '{tag}' already exists at {Xp.parent} (use --force to rebuild)")
+            return
+        print(f"cache '{tag}' predates the event features -- rebuilding", flush=True)
     Xp.parent.mkdir(parents=True, exist_ok=True)
     print(f"building cache '{tag}' from {split}/ ...", flush=True)
-    X, y, group = load_split(split, n_signal, n_background, n_particles, skip_files)
+    X, F, y, group = load_split(split, n_signal, n_background, n_particles, skip_files)
     np.save(Xp, X)
+    np.save(Fp, F)
     np.save(yp, y)
     np.save(gp, group)
-    meta = dict(tag=tag, split=split, n_signal=n_signal, n_background=n_background,
-                n_particles=n_particles, n_features=N_FEATURES, skip_files=skip_files,
+    meta = dict(tag=tag, version=CACHE_VERSION, split=split, n_signal=n_signal,
+                n_background=n_background, n_particles=n_particles, n_features=N_FEATURES,
+                event_features=list(EVENT_FEATURES), skip_files=skip_files,
                 n_events=int(len(X)), n_pos=int(y.sum()), n_neg=int((1 - y).sum()))
     mp.write_text(json.dumps(meta, indent=2))
     print(f"  -> {len(X)} events, {int(y.sum())} signal / {int((1-y).sum())} background")
@@ -197,15 +332,43 @@ def build_cache(tag: str, split: str, n_signal: int, n_background: int,
 
 
 def load_cache(tag: str):
-    Xp, yp, gp, mp = cache_paths(tag)
+    Xp, Fp, yp, gp, mp = cache_paths(tag)
     if not mp.exists():
         raise FileNotFoundError(f"no cache '{tag}'; run: python team/data.py --tag {tag} ...")
-    return np.load(Xp), np.load(yp), np.load(gp), json.loads(mp.read_text())
+    return np.load(Xp), np.load(Fp), np.load(yp), np.load(gp), json.loads(mp.read_text())
+
+
+def fit_event_norm(split: str = "train", n_signal: int = 100_000, n_background: int = 100_000):
+    """Measure (mean, std) of the transformed event features and print them.
+
+    Run this once when the feature list or transforms change, then paste the
+    result into EVENT_STANDARDIZE.  Deliberately not fitted at load time: the
+    constants have to be frozen so training, evaluation and firmware agree.
+    """
+    root = DATA_ROOT / split
+    budgets = [(p_, n_signal) for p_ in SIGNAL]
+    budgets += [(p_, int(round(n_background * p_.weight / 3.0))) for p_ in BACKGROUND]
+    chunks = []
+    for proc, budget in budgets:
+        for X, F, y in stream_process(root / proc.directory, budget):
+            chunks.append(F)
+    F = np.concatenate(chunks)
+    # F comes back standardized with the *current* constants; undo that to
+    # recover the transformed values, so re-fitting converges in one pass.
+    cur = np.array([EVENT_STANDARDIZE[n] for n in EVENT_FEATURES], dtype=np.float64)
+    T = np.where(cur[:, 1] < 1e-6, cur[:, 0], F * cur[:, 1] + cur[:, 0])
+    print("EVENT_STANDARDIZE = {")
+    for i, name in enumerate(EVENT_FEATURES):
+        m, sd = T[:, i].mean(), T[:, i].std()
+        print(f'    "{name}": ({m:.4f}, {sd:.4f}),')
+    print("}")
 
 
 def main():
     ap = argparse.ArgumentParser(description="build a cached, capped C1 sample")
-    ap.add_argument("--tag", required=True, help="cache name, e.g. train300k")
+    ap.add_argument("--fit-event-norm", action="store_true",
+                    help="print freshly measured EVENT_STANDARDIZE constants and exit")
+    ap.add_argument("--tag", help="cache name, e.g. train300k")
     ap.add_argument("--split", default="train", choices=["train", "eval"])
     ap.add_argument("--n-signal", type=int, default=300_000)
     ap.add_argument("--n-background", type=int, default=300_000)
@@ -214,6 +377,11 @@ def main():
                     help="skip the first N parquet fragments per process (disjoint samples)")
     ap.add_argument("--force", action="store_true")
     a = ap.parse_args()
+    if a.fit_event_norm:
+        fit_event_norm(a.split, a.n_signal, a.n_background)
+        return
+    if not a.tag:
+        ap.error("--tag is required unless --fit-event-norm is given")
     build_cache(a.tag, a.split, a.n_signal, a.n_background, a.n_particles, a.skip_files, a.force)
 
 
