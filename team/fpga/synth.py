@@ -55,16 +55,19 @@ model.summary(print_fn=lambda s: print("  " + s))
 nparams = model.count_params(); print(f"params: {nparams}")
 
 if a.weights:  # map torch state_dict -> keras (Linear weight is (out,in); Conv1D k=1 wants (1,in,out))
-    import torch
-    sd = torch.load(a.weights, map_location="cpu")
+    if a.weights.endswith(".npz"):   # torch-free path: dict of numpy arrays exported on the training box
+        z = np.load(a.weights); sd = {k: z[k] for k in z.files}
+    else:
+        import torch
+        sd = {k: v.detach().cpu().numpy() for k, v in torch.load(a.weights, map_location="cpu").items()}
     keys = [k for k in sd if k.endswith("weight")]
-    print("torch weight keys:", keys)
+    print("weight keys:", keys)
     li = 0
     for lyr in model.layers:
         if isinstance(lyr, (L.Conv1D, L.Dense)):
-            wk, bk = keys[li], keys[li].replace("weight", "bias"); W = sd[wk].numpy().T; b = sd[bk].numpy()
+            wk = keys[li]; bk = wk.replace("weight", "bias"); W = np.asarray(sd[wk]).T; b = np.asarray(sd[bk])
             lyr.set_weights([W[None, :, :] if isinstance(lyr, L.Conv1D) else W, b]); li += 1
-    print("weights loaded")
+    print("weights loaded:", li, "layers")
 
 cfg = hls4ml.utils.config_from_keras_model(model, granularity="name", default_precision=a.precision, default_reuse_factor=a.reuse)
 outdir = os.path.expanduser(f"~/fastml26/hls_{a.tag}")
