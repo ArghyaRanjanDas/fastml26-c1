@@ -118,8 +118,8 @@ primary** — the best AUC among candidates that fit one SLR.
 
 | file | run | φ | ρ | particles | params | AUC (eval) | why |
 |---|---|---|---|---|---|---|---|
-| `model_2041.{pt,json}` + `eval_sample.npz` | `B1e_16p` | 32-16-8 | 32-16 | 16 | 2,041 | 0.88378 | **primary** — best AUC that fits (~146k LUT / ~1,343 DSP) |
-| `model_2041_8p.{pt,json}` + `eval_sample_8p.npz` | `C1e_8p` | 32-16-8 | 32-16 | 8 | 2,041 | 0.88011 | the requested 8-particle variant — half the φ bill (~73k LUT / ~671 DSP) |
+| `model_2041.{pt,json}` + `eval_sample.npz` | `B1e_16p_1M` | 32-16-8 | 32-16 | 16 | 2,041 | **0.88687** | **primary** — best AUC that fits (~146k LUT / ~1,343 DSP) |
+| `model_2041_8p.{pt,json}` + `eval_sample_8p.npz` | `C1e_8p_1M` | 32-16-8 | 32-16 | 8 | 2,041 | **0.88113** | the requested 8-particle variant — half the φ bill (~73k LUT / ~671 DSP) |
 | `model_3585.{pt,json}` + `eval_sample_3617.npz` | `A3e_3k` | 64-32-16 | 16-8 | 16 | 3,585 | 0.88618 | best AUC ≤10k params, but φ64-32-16 is the width Vitis already rejected |
 
 Each `.json` carries the contract keys (`phi`, `rho`, `n_features`, `n_particles`,
@@ -147,6 +147,28 @@ needs neither hls4ml nor TensorFlow:
 python verify_export.py --json export/model_2041.json \
        --weights export/model_2041.pt --sample export/eval_sample.npz   # -> PASS
 ```
+
+---
+
+# Confirmation run at 1M + 1M events
+
+Same config as `B1e_16p`, trained on `train1M` (1M signal + 1M background, same even
+group mixture), 25 epochs. Eval slice unchanged.
+
+| run | train events | params | AUC (eval) | vs QCD | vs tt | vs W+jets | Δ vs 300k |
+|---|---|---|---|---|---|---|---|
+| `B1e_16p` (16 particles) | 600k | 2,057 | 0.88378 | 0.93109 | 0.74932 | 0.97059 | — |
+| **`B1e_16p_1M`** (16 particles) | **2M** | 2,057 | **0.88687** | 0.93027 | 0.75869 | 0.97163 | **+0.0031** |
+| `C1e_8p` (8 particles) | 600k | 2,057 | 0.88011 | — | 0.74712 | — | — |
+| **`C1e_8p_1M`** (8 particles) | **2M** | 2,057 | **0.88113** | — | 0.75017 | — | **+0.0010** |
+
+More data is worth about as much as the entire ρ sweep, at zero hardware cost. The 2,041-param
+model trained on 2M events (**0.88687**) now essentially matches the 40,401-param `A1_40k`
+trained on 600k (0.88755) — while `A1_40k` needs ~525k LUT / 4,836 DSP and this one needs
+~146k / ~1,343. Most of the gain is against tt (0.74932 → 0.75869), the weak background.
+
+**The exports in `team/export/` are the 1M models** (`B1e_16p_1M` and `C1e_8p_1M`); the
+table in Task 3 above lists the architectures, which are unchanged.
 
 ## Next (per FPGA feedback #2: LUT is the binding constraint)
 

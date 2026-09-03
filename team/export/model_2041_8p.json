@@ -11,9 +11,9 @@
   "n_features": 5,
   "n_particles": 8,
   "n_event_features": 11,
-  "run": "C1e_8p",
+  "run": "C1e_8p_1M",
   "params": 2041,
-  "eval_auc": 0.8801149844,
+  "eval_auc": 0.8811290746999999,
   "architecture": {
     "phi_activation": "relu",
     "rho_activation": "relu",
@@ -115,5 +115,5 @@
   },
   "event_feature_clip": 5.0,
   "event_features_computed_from_n_candidates": 16,
-  "fold_check_max_abs_diff": 1.5795230865478516e-06
+  "fold_check_max_abs_diff": 6.973743438720703e-06
 }

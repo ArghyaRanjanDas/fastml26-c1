@@ -11,9 +11,9 @@
   "n_features": 5,
   "n_particles": 16,
   "n_event_features": 11,
-  "run": "B1e_16p",
+  "run": "B1e_16p_1M",
   "params": 2041,
-  "eval_auc": 0.8837783477,
+  "eval_auc": 0.8868665705500001,
   "architecture": {
     "phi_activation": "relu",
     "rho_activation": "relu",
@@ -115,5 +115,5 @@
   },
   "event_feature_clip": 5.0,
   "event_features_computed_from_n_candidates": 16,
-  "fold_check_max_abs_diff": 1.6987323760986328e-06
+  "fold_check_max_abs_diff": 2.652406692504883e-06
 }
