@@ -76,6 +76,10 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--pool", default="mean", choices=["mean", "sum", "meanmax"])
     ap.add_argument("--gpu-batches", action="store_true")
+    ap.add_argument("--tt-weight", type=float, default=1.0,
+                    help="multiply the hard-label term for tt events by this")
+    ap.add_argument("--disagree-weight", action="store_true",
+                    help="weight by 1 + |teacher - student| logit gap (batch-normalised)")
     args = ap.parse_args()
 
     if bool(args.teacher) == bool(args.soft_targets):
@@ -144,10 +148,16 @@ def main():
 
     tX = torch.from_numpy(Xtr[tr_idx][:, :npart]); tF = torch.from_numpy(Ftr[tr_idx])
     tY = torch.from_numpy(ytr[tr_idx]); tZ = torch.from_numpy(zt_tr[tr_idx])
+    w = np.ones(len(tr_idx), dtype=np.float32)
+    if args.tt_weight != 1.0:
+        w[gtr[tr_idx] == 2] = args.tt_weight
+        print(f"  tt-weight {args.tt_weight}: {int((gtr[tr_idx] == 2).sum()):,} tt events")
+    tW = torch.from_numpy(w)
     if args.gpu_batches:
         # The box is shared with the CPU lane; GPU-resident batching keeps the
         # cores free and is ~5 s/epoch here against ~9 s (or worse under load).
-        gX, gF, gy, gz = tX.to(device), tF.to(device), tY.to(device), tZ.to(device)
+        gX, gF, gy, gz, gW = (tX.to(device), tF.to(device), tY.to(device),
+                              tZ.to(device), tW.to(device))
         n_train, bs = len(gX), args.batch_size
         steps = n_train // bs
 
@@ -155,10 +165,10 @@ def main():
             perm = torch.randperm(n_train, device=device)
             for si in range(steps):
                 i = perm[si * bs:(si + 1) * bs]
-                yield gX[i], gF[i], gy[i], gz[i]
+                yield gX[i], gF[i], gy[i], gz[i], gW[i]
     else:
         loader = torch.utils.data.DataLoader(
-            torch.utils.data.TensorDataset(tX, tF, tY, tZ), batch_size=args.batch_size,
+            torch.utils.data.TensorDataset(tX, tF, tY, tZ, tW), batch_size=args.batch_size,
             shuffle=True, num_workers=4, pin_memory=True, drop_last=True,
             persistent_workers=True)
         steps = len(loader)
@@ -180,13 +190,21 @@ def main():
     for epoch in range(1, args.epochs + 1):
         student.train()
         t0, tot, seen = time.perf_counter(), 0.0, 0
-        for xb, fb, yb, zb in batches():
+        for xb, fb, yb, zb, wb in batches():
             xb, fb = xb.to(device, non_blocking=True), fb.to(device, non_blocking=True)
             yb, zb = yb.to(device, non_blocking=True), zb.to(device, non_blocking=True)
+            wb = wb.to(device, non_blocking=True)
             opt.zero_grad(set_to_none=True)
             zs = student(xb, fb if use_evt else None)
-            kd = Fn.binary_cross_entropy_with_logits(zs / T, torch.sigmoid(zb / T)) * (T * T)
-            loss = alpha * kd + (1.0 - alpha) * hard(zs, yb)
+            kw = wb
+            if args.disagree_weight:
+                with torch.no_grad():
+                    d = (zb - zs).abs()
+                    kw = kw * (1.0 + d / d.mean().clamp(min=1e-6))
+            kd = (Fn.binary_cross_entropy_with_logits(
+                      zs / T, torch.sigmoid(zb / T), reduction="none") * (T * T) * kw).mean()
+            hl = (Fn.binary_cross_entropy_with_logits(zs, yb, reduction="none") * wb).mean()
+            loss = alpha * kd + (1.0 - alpha) * hl
             loss.backward()
             opt.step()
             sched.step()
@@ -220,6 +238,7 @@ def main():
                    pool_norm=True, pool=args.pool, params=n_params, phi_macs=phi_macs,
                    n_particles=npart, n_particles_use=npart, eval_auc=eval_auc,
                    val_auc=float(best), per_background_auc=per_group, signal_eff=eff,
+                   tt_weight=args.tt_weight, disagree_weight=args.disagree_weight,
                    epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
                    train_meta=meta_tr, eval_meta=meta_ev, timing=timing, history=history)
     (OUT_DIR / f"{args.tag}_summary.json").write_text(json.dumps(summary, indent=2))

@@ -52,15 +52,31 @@ def load_run(tag: str):
     return model, summary
 
 
+def sample_groups(Xs: np.ndarray) -> np.ndarray | None:
+    """Recover the background label of each closure-sample row by matching it back to
+    `cache/eval100k` -- the sample carries no `group` array. The raw 5-channel particle
+    tensor is the key; it is unique per event. Returns None unless every row matches."""
+    Xe = np.load(TEAM / "cache" / "eval100k" / "X.npy")
+    ge = np.load(TEAM / "cache" / "eval100k" / "group.npy").ravel()
+    Xe = np.ascontiguousarray(Xe.reshape(len(Xe), -1))
+    index = {Xe[i].tobytes(): int(ge[i]) for i in range(len(Xe))}
+    flat = np.ascontiguousarray(Xs.reshape(len(Xs), -1))
+    out = np.array([index.get(flat[i].tobytes(), -1) for i in range(len(flat))])
+    matched = (out >= 0).mean()
+    print(f"  closure sample matched to eval100k: {matched * 100:.1f}%")
+    return out if matched == 1.0 else None
+
+
 def sample_inputs(rich: bool):
     """The DeepSet lane's closure sample, in this lane's input format."""
     d = np.load(TEAM / "export" / "eval_sample.npz")
     X, F, y = d["X"], d["F"], d["y"]
+    g = sample_groups(np.ascontiguousarray(X))
     if rich:
         sys.path.insert(0, str(TEAM))
         from physics.derived import rich_particles
         X = rich_particles(X)
-    return np.ascontiguousarray(X), np.ascontiguousarray(F), y
+    return np.ascontiguousarray(X), np.ascontiguousarray(F), y, g
 
 
 def main():
@@ -71,21 +87,29 @@ def main():
     ap.add_argument("--part", default="xcu200-fsgd2104-2-e")
     ap.add_argument("--clock", type=float, default=5.0)
     ap.add_argument("--io-type", default="io_parallel")
+    ap.add_argument("--strategy", default="distributed_arithmetic",
+                    help="'distributed_arithmetic' (DSP-free, requires reuse 1) or 'latency'")
+    ap.add_argument("--reuse", type=int, default=1)
     ap.add_argument("--full-eval", action="store_true",
                     help="also run the whole eval100k slice through the HLS model (slow)")
     args = ap.parse_args()
 
     model, summary = load_run(args.run)
     rich = summary.get("rich", True)
-    Xs, Fs, ys = sample_inputs(rich)
+    Xs, Fs, ys, gs = sample_inputs(rich)
 
     yk = np.asarray(model.predict([Xs, Fs], batch_size=4096, verbose=0)).ravel()
 
     outdir = args.outdir or f"/tmp/hls_attn_{args.run}"
     t0 = time.perf_counter()
+    # Precision comes from the HGQ2 bit-exact pass, so the only thing this config
+    # carries is the arithmetic strategy. distributed_arithmetic replaces every
+    # multiplier with an adder tree (0 DSP) and requires reuse factor 1.
+    hls_config = {"Model": {"Strategy": args.strategy, "ReuseFactor": args.reuse,
+                            "Precision": "auto"}}
     hls_model = hls4ml.converters.convert_from_keras_model(
         model, backend="Vitis", io_type=args.io_type, output_dir=outdir,
-        part=args.part, clock_period=args.clock)
+        part=args.part, clock_period=args.clock, hls_config=hls_config)
     hls_model.compile()
     print(f"converted + compiled in {time.perf_counter()-t0:.1f}s -> {outdir}")
 
@@ -99,10 +123,28 @@ def main():
     print(f"  AUC hls   = {roc_auc_score(ys, yh):.5f}")
 
     result = dict(run=args.run, part=args.part, clock=args.clock, io_type=args.io_type,
+                  strategy=args.strategy, reuse=args.reuse,
                   n_sample=int(len(ys)), max_abs_diff=float(dif.max()),
                   mean_abs_diff=float(dif.mean()),
                   auc_keras_sample=float(roc_auc_score(ys, yk)),
                   auc_hls_sample=float(roc_auc_score(ys, yh)))
+
+    if gs is not None:
+        per_k, per_h, sig = {}, {}, ys == 1
+        for gid, name in sorted(attn_data.GROUP_NAME.items()):
+            if name == "HH_4b":
+                continue
+            sel = sig | ((ys == 0) & (gs == gid))
+            if (ys[sel] == 0).sum() == 0:
+                continue
+            per_k[name] = float(roc_auc_score(ys[sel], yk[sel]))
+            per_h[name] = float(roc_auc_score(ys[sel], yh[sel]))
+            print(f"    vs {name:<6s}: keras {per_k[name]:.4f} -> HLS {per_h[name]:.4f}"
+                  f"  ({int((ys[sel] == 0).sum())} bkg events)")
+        result.update(per_background_auc_keras_sample=per_k,
+                      per_background_auc_hls_sample=per_h)
+    else:
+        print("    (could not match the sample rows back to eval100k -- no per-group AUC)")
 
     if args.full_eval:
         Xe, Fe, ye, ge, _ = attn_data.load(summary["eval_tag"], rich=rich)
@@ -119,7 +161,9 @@ def main():
     if args.write:
         t0 = time.perf_counter()
         hls_model.write()
-        tar = HERE / f"hls_attn_{args.run}.tar.gz"
+        projects = TEAM / "fpga" / "projects"
+        projects.mkdir(parents=True, exist_ok=True)
+        tar = projects / f"{args.run}.tar.gz"
         subprocess.run(["tar", "czf", str(tar), "-C", str(Path(outdir).parent),
                         Path(outdir).name], check=True)
         mb = tar.stat().st_size / 1e6
