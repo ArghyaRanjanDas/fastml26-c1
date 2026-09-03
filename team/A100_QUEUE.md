@@ -48,7 +48,7 @@ will run them on the A10 instead.
 > print "a 0.0"; the snippet as written prints no such value — nothing computes the
 > rich-channel comparison — so there is no discrepancy to report, just a missing print.)
 
-### c3-1 — QAT beta sweep for the attention student (the lane's long pole)
+### c3-1 — QAT beta sweep for the attention student (the lane's long pole)  `[running]`
 
 HGQ2 quantization-aware training, warm-started from the float run `a_d16_b2`
 (5,233 weights, **float eval AUC 0.91138**, vs tt 0.8168 — already committed as
@@ -93,7 +93,7 @@ too strong. The useful range is 1e-7 to 3e-6. The warm
 start converges fast (epoch 1 is already at val AUC 0.9026), so 40 epochs is generous;
 drop to `--epochs 20` if the queue is busy. Report the (beta, AUC, EBOPs, vs-tt) table.
 
-### c3-2 — how far the float attention student goes with more capacity + time
+### c3-2 — how far the float attention student goes with more capacity + time  `[running]`
 
 The A10 sweep at 30 epochs gave 0.90818 (d=16, 3,073 w), 0.91138 (d=16 ×2 blocks,
 5,233 w) and 0.91267 (d=32, 10,033 w) against a **teacher at 0.91515**. This asks
@@ -144,7 +144,7 @@ done
 
 ---
 
-### c1-2 — best student on train4M when c2's cache lands
+### c1-2 — best student on train4M when c2's cache lands  `[blocked: train4M is not on the AF pod]`
 
 The 2,041-param student gained +0.0031 going from 600k to 2M events, which is about what
 the entire rho sweep was worth and costs nothing in hardware. The rich student has not been
@@ -159,3 +159,20 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
   --temperature 2 --alpha 0.5 --phi 32,16,8 --rho 32,16 --pool meanmax \
   --gpu-batches --epochs 30 --train-tag train4M_s --eval-tag eval100k_s
 ```
+
+> **hh4b [blocked]** — `team/cache/train4M/` **does not exist on the AF pod** and cannot be
+> built here. RESULTS.md says it is 5.6 GB "built on the CPU box"; `team/cache/` is gitignored,
+> so it does not travel through git, and I searched `/work/users/das214`, `/work/projects`,
+> `/depot/cms/{users,private/users}/das214` and `/home/das214` for `train4M*` — nothing.
+> Rebuilding locally is also impossible: the raw parquet (`~/hack-data/C1_HH4b`) is not mounted
+> on this pod, which is the same reason the teacher lane could not do a 32-candidate teacher.
+>
+> **To unblock, c2 needs to put the cache on storage the AF pod can read** — `/depot/cms/users/das214/`
+> is the natural choice (it is visible from both the AF and the batch nodes). `/work/users/das214/`
+> works too if the CPU box mounts it. Once it lands I will run c1-2 and also retrain the teacher on it.
+>
+> Note for whoever runs it: c2 reports `train4M` as **X (7,569,258, 16, 11), F (…, 19)** — 11
+> per-candidate channels and 19 event features, not the `train1M` layout of X 16×5 / F 11. The
+> teacher in `team/teacher/` reads the 5/11 layout, so retraining it on `train4M` needs an input
+> adapter, not just a `--train-tag` change. The mixture also differs (QCD 25.3 / tt 37.4 / W 37.4
+> vs even thirds), so a `train4M` row is not a clean A/B against a `train1M` row.
