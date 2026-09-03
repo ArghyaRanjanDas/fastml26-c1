@@ -1,4 +1,5 @@
 cache/
 *.tar.gz
 hls_*/
-
+runs/*_eval_scores.npy
+logs_*.log

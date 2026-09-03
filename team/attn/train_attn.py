@@ -122,9 +122,18 @@ def main():
     va, tr = perm[:n_val], perm[n_val:]
 
     Yt = np.stack([ytr, zt], axis=1).astype(np.float32)
-    cfg = Cfg(n_channels=Xtr.shape[2], n_event=Ftr.shape[1], d=args.d, heads=args.heads,
-              blocks=args.blocks, mlp_ratio=args.mlp_ratio, head_dim=args.head_dim,
-              pool=args.pool, residual=not args.no_residual)
+    if args.init_from:
+        # QAT must reproduce the float run's topology exactly, or the warm start is
+        # silently partial; take the shape from the source run, not from the flags.
+        src_summary = json.loads((RUNS / f"{args.init_from}_summary.json").read_text())
+        cfg = Cfg(**src_summary["cfg"])
+        rich = src_summary.get("rich", True)
+        if rich != (not args.no_rich):
+            raise SystemExit(f"--init-from {args.init_from} was trained with rich={rich}")
+    else:
+        cfg = Cfg(n_channels=Xtr.shape[2], n_event=Ftr.shape[1], d=args.d, heads=args.heads,
+                  blocks=args.blocks, mlp_ratio=args.mlp_ratio, head_dim=args.head_dim,
+                  pool=args.pool, residual=not args.no_residual)
 
     if args.quantized:
         from hgq.config import LayerConfigScope, QuantizerConfigScope
@@ -136,8 +145,7 @@ def main():
         model = build(cfg, quantized=False)
 
     if args.init_from:
-        src_cfg = json.loads((RUNS / f"{args.init_from}_summary.json").read_text())["cfg"]
-        src = build(Cfg(**src_cfg), quantized=False)
+        src = build(cfg, quantized=False)
         src.load_weights(RUNS / f"{args.init_from}.weights.h5")
         moved = transfer_weights(src, model)
         print(f"warm start from '{args.init_from}': {moved} tensors transferred")
@@ -160,7 +168,7 @@ def main():
         if args.beta_ramp:
             from hgq.utils.sugar import BetaScheduler
             callbacks.append(BetaScheduler(
-                lambda ep, _: 0.0 if ep < 1 else args.beta0 * min(1.0, ep / args.beta_ramp)))
+                lambda ep: 0.0 if ep < 1 else args.beta0 * min(1.0, ep / args.beta_ramp)))
 
     t0 = time.perf_counter()
     model.fit([Xtr[tr], Ftr[tr]], Yt[tr], batch_size=args.batch_size, epochs=args.epochs,
