@@ -28,3 +28,17 @@ Levers: reuse factor on φ, narrower φ, fewer particles, lower precision / QAT.
 the open item: with a single global ap_fixed<16,6> the HLS model does not reproduce the float scores, which
 means the synthesized AUC cannot be quoted yet. Next: closure check on `export/eval_sample.npz` (real inputs),
 per-layer precision from hls4ml profiling, then re-synthesize at the minimal precision that closes.
+
+## Closure vs fixed-point precision — model_2041 (B1e_16p_1M), real inputs (`export/eval_sample.npz`, 5,000 events)
+
+| precision (global) | max\|Δ\| keras–HLS | mean\|Δ\| | AUC keras | **AUC HLS** |
+|---|---|---|---|---|
+| ap_fixed<16,6>  | 0.994 | 0.161 | 0.8847 | 0.8066 ❌ |
+| ap_fixed<18,8>  | 0.534 | 0.118 | 0.8847 | 0.8708 |
+| ap_fixed<22,10> | 0.224 | 0.028 | 0.8847 | **0.8830** |
+| ap_fixed<28,12> | 0.016 | 0.002 | 0.8847 | 0.8846 ✅ |
+
+Diagnosis: the loss is **integer-range overflow** (6 → 10 integer bits recovers it), not rounding. Fix on the
+training side: standardize the event features and bound activations to ~±8 before export (asked of c1);
+then 16-bit (or QAT ≤8-bit) closes. Meanwhile the primary model is being synthesized at <22,10> and <20,10>
+to price the wider datapath.
