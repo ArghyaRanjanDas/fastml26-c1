@@ -91,3 +91,21 @@ from max|W| (`synth.py --accum 'ap_fixed<24,12>' --result 'ap_fixed<16,6,AP_RND,
 So: −31 % LUT and −18 % DSP versus the 22-bit design at −0.0015 AUC. The headroom (~130k LUT, ~500 DSP)
 is what pays for c2's six extra per-candidate channels (+24 % φ MACs) in the next student.
 Summary: `reports/sum_tsat_16_6.json`. Distributed-arithmetic (da4ml) variants of both designs are synthesizing.
+
+## Rich-feature student on the FPGA — **new headline** (model_2777_rich = `rkd_T2_a05`, 2026-09-03 17:45 PDT)
+
+c1's student with c2's six derived per-candidate channels (16×11 particle tensor), mean+max pooling and
+19 event features, distilled from the teacher (float eval AUC 0.909, vs tt 0.809). Same Vitis flow
+(VU9P xcu200, 200 MHz, io_parallel, reuse 1); closure on `export/eval_sample_rich.npz` (5,000 events).
+
+| design | AUC keras (sample) | **AUC HLS** | LUT | FF | DSP | latency | one SLR (350k LUT / 1,900 DSP)? |
+|---|---|---|---|---|---|---|---|
+| **rich, `tsat_16_6`** (16-bit data, accum <24,12> wrap, output SAT, auto weight ints) | 0.9077 | **0.9062** | **253,154** | 176,866 | **1,692** | 81–84 cyc (**0.42 µs**) | ✅ **72 % LUT, 89 % DSP** |
+| rich, ap_fixed<22,10> wrap | 0.9077 | 0.9069 | 369,990 | 353,572 | 2,322 | 82–85 cyc | ❌ LUT 106 %, DSP 122 % |
+| baseline `tsat_16_6` (model_2041), for reference | 0.8847 | 0.8815 | 219,316 | 149,434 | 1,411 | 76–79 cyc | ✅ 63 % / 74 % |
+
+So the six extra channels cost +34k LUT and +281 DSP and buy **+0.025 AUC on the FPGA** (0.881 → 0.906).
+DSP is now the binding resource (89 %); the distributed-arithmetic (da4ml) variant and QAT/pruning are the
+levers for the next student. The derived channels are computed once per candidate in a preprocessing
+block (formulas and firmware cost classes in `team/fpga/FEATURES.md`); that block is **not** included in
+these numbers yet. Summaries: `reports/sum_rich_*.json`.

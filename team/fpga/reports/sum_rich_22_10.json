@@ -1,0 +1,1 @@
+{"EstimatedClockPeriod":"3.636","BestLatency":"82","WorstLatency":"85","LUT":"369990","FF":"353572","DSP":"2322","BRAM_18K":"1","URAM":"0","tag":"rich_22_10","params":2745,"model":"model_2777_rich (rkd_T2_a05)","precision":"ap_fixed<22,10>","reuse":1,"clock_ns":5.0,"part":"xcu200-fsgd2104-2-e","hls_auc_sample":0.90692,"keras_auc_sample":0.90768,"stored_float_auc_sample":0.90776}
