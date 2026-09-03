@@ -118,7 +118,7 @@ size the run-to-run spread, so the table above can be read honestly.
 
 ---
 
-### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed
+### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[running]`
 
 On the A10 (shared with screening runs) 12 epochs of HGQ2 QAT got EBOPs 853k -> 360k
 (2.4x, which is the DSP lever) but only AUC 0.89044 — below the 0.895 bar and below the
@@ -141,6 +141,13 @@ for b in 3e-7 1e-6 3e-6; do
     --beta0 $b --tag "a100_b$b" --epochs 40 --lr 5e-4 2>&1 | tail -25
 done
 ```
+
+> **hh4b [note]** — `team/make_student_cache.py` (and anything else importing `team/data.py`)
+> failed on the AF pod: `data.py` hardcodes `CACHE_ROOT = ~/fastml26-hackathon/team/cache`,
+> which is c1's layout and does not exist here (the repo is at `/work/users/das214/fastml26/fastml26-c1`).
+> Fixed **without editing c1's file** by symlinking `~/fastml26-hackathon -> the repo`, so the
+> hardcoded path resolves for every job. `train1M_s` (X 2,000,000×16×11, F 19) and `eval100k_s`
+> built fine after that. Worth making the path an env var eventually.
 
 ---
 
