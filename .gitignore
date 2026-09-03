@@ -17,3 +17,7 @@ preprocessing/logs/
 .vscode/
 .idea/
 .DS_Store
+
+# team/ artefacts: cached parquet slices and raw score dumps
+team/cache/
+team/runs/*.npy
