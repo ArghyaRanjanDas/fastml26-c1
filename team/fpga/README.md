@@ -6,10 +6,11 @@ hls4ml (Vitis backend, io_parallel, ap_fixed<16,6> default) and runs Vitis HLS c
 for `xcu200-fsgd2104-2-e` at 200 MHz. Output: `hls_<tag>/summary.json` with LUT/FF/DSP/BRAM
 and best/worst latency (cycles) — the numbers for the Friday slide.
 
-Runs where Vitis HLS 2024.1 lives (COS-6PRIME, env `hls4ml`, hls4ml >= 1.3):
+Runs INSIDE the hackathon pod (the GPU image ships Xilinx tools; hls4ml 1.3 lives in `~/hlsenv`):
 ```
-source /home/tools/Xilinx/Vitis_HLS/2024.1/settings64.sh
-python synth.py --export team/export/model_9k.json --weights team/export/model_9k.pt --tag m9k
+source /tools/Xilinx/Vivado/2023.1/settings64.sh   # per hackathon README
+export XILINX_VITIS=/tools/Xilinx/Vitis/2024.2
+~/hlsenv/bin/python team/fpga/synth.py --export team/export/model_9k.json --weights team/export/model_9k.pt --tag m9k
 ```
 Export contract from training (`team/export/`): `model_<params>.json` with keys
 `phi`, `rho` (layer widths), `n_features`, `n_particles`, `n_event_features`,

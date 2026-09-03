@@ -5,7 +5,9 @@ Budget (one SLR): ~350k LUT · 700k FF · 1,900 DSP · 25.3 MB BRAM · latency �
 | tag | model | params | precision | reuse | LUT | FF | DSP | BRAM | latency (cycles) | fits? |
 |---|---|---|---|---|---|---|---|---|---|---|
 | dummy10k | DeepSet φ64-32-16 ×16p, +8 evt, ρ64-32 (random weights) | 6,705 | ap_fixed<16,6> | 1 | 524,961 | 374,954 | 4,836 | 1 | 71–74 (0.37 µs) | ❌ LUT 1.5×, DSP 2.5× |
+| r4_16p | same shape, reuse 4 (random weights) | 6,705 | ap_fixed<16,6> | 4 | 538,341 | 397,548 | 1,624 | 1 | 219–222 (~1.1 µs @5 ns; 0.8 µs @ est. 3.6 ns) | ❌ LUT 1.5× (DSP now fits) |
 
 Lesson: φ is replicated once per particle (16×) — that is the whole DSP/LUT bill.
 Levers: reuse factor on φ, narrower φ, fewer particles, lower precision / QAT.
-Sweep in progress (see `sweep.sh`).
+Reuse alone does not fix LUT: LUT is the binding constraint (16-bit arithmetic ×16 particles).
+Next levers in order: narrower φ, fewer particles, quantization-aware training (QKeras, ≤8 bit).
