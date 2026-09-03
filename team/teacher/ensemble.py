@@ -10,7 +10,7 @@ import json
 
 import numpy as np
 
-from common import CACHE_TAGS, HERE, RUNS, load_cache, auc_report, quick_auc, write_json
+from common import CACHE_TAGS, HERE, RUNS, binary_score, load_cache, auc_report, quick_auc, write_json
 
 
 def main():
@@ -22,15 +22,22 @@ def main():
     args = ap.parse_args()
     name = args.name or "ens_" + "+".join(args.runs)
 
+    def member_score(run, tag):
+        """A member's binary logit. A 4-class member contributes its HH-vs-background
+        log-odds, which is the same quantity the binary head emits, so the mean is
+        meaningful across head types."""
+        z = np.load(RUNS / run / f"logits_{tag}.npy")
+        return binary_score(z) if z.ndim == 2 else z
+
     per_cache = {}
     for tag in CACHE_TAGS:
-        stack = np.stack([np.load(RUNS / r / f"logits_{tag}.npy") for r in args.runs])
+        stack = np.stack([member_score(r, tag) for r in args.runs])
         per_cache[tag] = stack.mean(0).astype(np.float32)
 
     Xev, Fev, yev, gev, _ = load_cache(args.eval_tag)
     members, n_params, label_smoothing = {}, 0, None
     for r in args.runs:
-        a, att = quick_auc(np.load(RUNS / r / f"logits_{args.eval_tag}.npy"), yev, gev)
+        a, att = quick_auc(member_score(r, args.eval_tag), yev, gev)
         ms = json.loads((RUNS / r / "summary.json").read_text())
         members[r] = dict(eval_auc=a, eval_auc_tt=att, model=ms["model"], params=ms["params"])
         n_params += ms["params"]

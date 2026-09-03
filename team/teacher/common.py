@@ -170,6 +170,30 @@ def quick_auc(logits: np.ndarray, y: np.ndarray, group: np.ndarray):
     return auc, float(roc_auc_score(y[sel], logits[sel]))
 
 
+# --------------------------------------------------- multiclass -> binary score
+
+# Column order of the 4-class head == team/data.py GROUP_ID: 0 QCD, 1 HH_4b, 2 tt, 3 Wjets.
+CLASS_ORDER = tuple(name for name, _ in sorted(GROUP_ID.items(), key=lambda kv: kv[1]))
+SIGNAL_COL = GROUP_ID["HH_4b"]
+BKG_COLS = tuple(i for i in range(len(GROUP_ID)) if i != SIGNAL_COL)
+
+
+def binary_score(logits4):
+    """(N,4) class logits -> (N,) binary HH-vs-background score.
+
+    log p(HH) - log p(background) = z_HH - logsumexp(z_bkg): the softmax normalizer cancels,
+    so this is the exact log-odds of the 4-class model's HH probability against the pooled
+    background, and it is monotone in p(HH)/(1-p(HH)) -- the right quantity for the binary ROC.
+    """
+    import numpy as _np
+    if isinstance(logits4, _np.ndarray):
+        z = logits4.astype(_np.float64)
+        b = z[:, list(BKG_COLS)]
+        m = b.max(1)
+        return (z[:, SIGNAL_COL] - (m + _np.log(_np.exp(b - m[:, None]).sum(1)))).astype(_np.float32)
+    return logits4[:, SIGNAL_COL] - torch.logsumexp(logits4[:, list(BKG_COLS)], dim=1)
+
+
 def write_json(path: Path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, indent=2))

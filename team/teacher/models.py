@@ -1,5 +1,9 @@
 """Teacher architectures (no FPGA constraint).
 
+Both models emit `n_out` logits: n_out=1 is the binary HH-vs-background head (squeezed to
+(B,)), n_out=4 is the softmax head over the process classes in team/data.py GROUP_ID order
+(0 QCD, 1 HH_4b, 2 tt, 3 Wjets), returned as (B, 4).
+
 BigDeepSet : phi 128-64-32 per candidate, mean+max pooling, concat event feats, rho 256-128-64.
 ParTLite   : Particle-Transformer-lite -- per-candidate embedding d=128, N particle-attention
              blocks (8 heads) whose attention logits get a learned bias from the pairwise
@@ -25,8 +29,9 @@ def _init_linear(m: nn.Module):
 
 class BigDeepSet(nn.Module):
     def __init__(self, n_event: int = 11, rich: bool = True, phi=(128, 64, 32),
-                 rho=(256, 128, 64), dropout: float = 0.1):
+                 rho=(256, 128, 64), dropout: float = 0.1, n_out: int = 1):
         super().__init__()
+        self.n_out = n_out
         self.rich = rich
         d_in = N_RICH_PART if rich else N_RAW_PART
         self.in_bn = nn.BatchNorm1d(d_in)
@@ -41,7 +46,7 @@ class BigDeepSet(nn.Module):
             layers += [nn.Linear(d, h), nn.GELU(), nn.Dropout(dropout)]
             d = h
         self.rho = nn.Sequential(*layers)
-        self.out = nn.Linear(d, 1)
+        self.out = nn.Linear(d, n_out)
         self.apply(_init_linear)
 
     def forward(self, x: torch.Tensor, f: torch.Tensor) -> torch.Tensor:
@@ -57,7 +62,8 @@ class BigDeepSet(nn.Module):
         mx = torch.where(torch.isfinite(mx), mx, torch.zeros_like(mx))
         z = torch.cat([mean, mx, f.to(h.dtype)], dim=1)
         z = self.pool_bn(z)
-        return self.out(self.rho(z)).squeeze(-1)
+        out = self.out(self.rho(z))
+        return out.squeeze(-1) if self.n_out == 1 else out
 
 
 # --------------------------------------------------------------- ParT-lite
@@ -132,9 +138,10 @@ class ParTLite(nn.Module):
     def __init__(self, n_event: int = 11, rich: bool = True, d: int = 128, n_heads: int = 8,
                  n_blocks: int = 4, n_cls_blocks: int = 2, mlp_ratio: int = 4,
                  dropout: float = 0.1, pair_hidden: int = 64, head_dims=(256, 64),
-                 event_hidden: int = 64):
+                 event_hidden: int = 64, n_out: int = 1):
         super().__init__()
         self.rich = rich
+        self.n_out = n_out
         d_in = N_RICH_PART if rich else N_RAW_PART
         # particle embedding (ParT: BN on inputs, then 3x [LN, Linear, GELU])
         self.in_bn = nn.BatchNorm1d(d_in)
@@ -163,7 +170,7 @@ class ParTLite(nn.Module):
         for h in head_dims:
             layers += [nn.Linear(dd, h), nn.GELU(), nn.Dropout(dropout)]
             dd = h
-        self.head = nn.Sequential(*layers, nn.Linear(dd, 1))
+        self.head = nn.Sequential(*layers, nn.Linear(dd, n_out))
         self.apply(_init_linear)
 
     def forward(self, x: torch.Tensor, f: torch.Tensor) -> torch.Tensor:
@@ -186,7 +193,8 @@ class ParTLite(nn.Module):
         m = mask[..., None].to(h.dtype)
         mean = self.norm_tok((h * m).sum(1) / m.sum(1).clamp_min(1.0))
         z = torch.cat([cls, mean, self.event_mlp(f.to(cls.dtype))], dim=1)
-        return self.head(z).squeeze(-1)
+        out = self.head(z)
+        return out.squeeze(-1) if self.n_out == 1 else out
 
 
 MODELS = {"deepset": BigDeepSet, "part": ParTLite}
