@@ -6,7 +6,9 @@
   "tt_semilep": 0.7593395605555555,
   "tt_leptonic": 0.7954398066666667,
   "QCD": 0.9300427094444443,
-  "Wjets": 0.9751984077777778
+  "Wjets": 0.9751984077777778,
+  "tt [even (as sampled)]": 0.7593898559259259,
+  "tt [SM branching fractions]": 0.7469915610496705
  },
  "feature_auc": {
   "tt_hadronic": {
@@ -214,5 +216,10 @@
    "dR_j12": 0.5246471583333333,
    "deta_j12": 0.6529862333333333
   }
+ },
+ "tt_branching_fractions": {
+  "tt_hadronic": 0.457,
+  "tt_semilep": 0.438,
+  "tt_leptonic": 0.105
  }
 }

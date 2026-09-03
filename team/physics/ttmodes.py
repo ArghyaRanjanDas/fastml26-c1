@@ -111,9 +111,9 @@ def main():
     s_tt_even = np.concatenate([mode_scores[m] for m in BR])
     for label, s_tt in (("even (as sampled)", s_tt_even), ("SM branching fractions", s_tt_phys)):
         yy = np.concatenate([np.ones(len(s_sig)), np.zeros(len(s_tt))])
-        a = float(roc_auc_score(yy, np.concatenate([s_sig, s_tt])))
-        rows[f"tt [{label}]"] = a
-        print(f"  vs tt, {label:<24s} AUC {a:.4f}")
+        auc = float(roc_auc_score(yy, np.concatenate([s_sig, s_tt])))
+        rows[f"tt [{label}]"] = auc
+        print(f"  vs tt, {label:<24s} AUC {auc:.4f}")
 
     order = sorted(names, key=lambda n: -np.mean([feat_tbl[m][n] for m in
                                                   ("tt_hadronic", "tt_semilep", "tt_leptonic")]))

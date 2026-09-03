@@ -272,3 +272,56 @@ def compute_chunked(X: np.ndarray, chunk: int = 100_000, verbose: bool = False):
     names = list(outs[0])
     FEATURE_NAMES = names
     return names, np.stack([np.concatenate([o[n] for o in outs]) for n in names], axis=1)
+
+
+# Shape-fixing transform for each feature, in the same "log1p" / "linear"
+# vocabulary team/data.py uses for its 11 event features.  Anything that is a
+# momentum, an energy or a mass gets log1p (they span three decades and have
+# long tails); counts, ratios and angles stay linear.  A standardizing affine
+# step follows, exactly as for the incumbent features.
+TRANSFORM = {
+    "mpt": "log1p", "mpt_over_ht": "linear", "mpt_sig": "log1p",
+    "min_dphi_mpt": "linear",
+    "iso_min": "linear", "iso_lead_pt": "log1p", "n_iso": "linear",
+    "mt_lep_mpt": "log1p",
+    "n_dxy_p05": "linear", "n_dxy_p20": "linear", "ptw_dxy": "linear",
+    "max_pt_dxy": "log1p", "dxy_lead4": "linear",
+    "m6": "log1p", "m8": "log1p", "m16": "log1p", "ht4_frac": "linear",
+    "pt_ratio_41": "linear", "centrality": "linear", "eta_spread": "linear",
+    "sphericity_T": "linear",
+    "n_jets15": "linear", "n_jets30": "linear", "jet1_m": "log1p",
+    "jet_m_max": "log1p", "jet_ptdxy_max": "log1p", "n_bjets": "linear",
+    "ht_jets4": "log1p",
+    "dm_W": "log1p", "m_jj_maxpt": "log1p", "dm_top": "log1p", "dm_Wtop": "log1p",
+    "m_bb1": "log1p", "m_bb2": "log1p", "dm_pair": "log1p", "dm_higgs": "log1p",
+    "m_4jet": "log1p", "dR_j12": "linear", "deta_j12": "linear",
+}
+
+
+# What each feature costs in firmware, which is half of whether it is worth
+# taking.  Three classes:
+#   "event"    O(P) reductions over the 16 candidates -- sums, maxima, counts,
+#              one invariant mass.  Essentially free next to phi()'s 12,800 MACs.
+#   "pairwise" needs the 16x16 Delta-R table.  cos(dphi) = c_i c_j + s_i s_j from
+#              the cos/sin already in the input, so ~512 multiplies and 256
+#              comparisons -- ~4% of phi(), and it is computed once per event
+#              rather than replicated per particle.
+#   "jets"     needs the iterative cone clustering: 6 sequential passes over the
+#              pairwise table plus four-vector sums.  Sequential passes are what
+#              hurt latency, so treat these as expensive until someone prototypes
+#              a fixed 4-seed unrolled version.
+COST = {
+    "mpt": "event", "mpt_over_ht": "event", "mpt_sig": "event", "min_dphi_mpt": "event",
+    "iso_min": "pairwise", "iso_lead_pt": "pairwise", "n_iso": "pairwise",
+    "mt_lep_mpt": "pairwise",
+    "n_dxy_p05": "event", "n_dxy_p20": "event", "ptw_dxy": "event",
+    "max_pt_dxy": "event", "dxy_lead4": "event",
+    "m6": "event", "m8": "event", "m16": "event", "ht4_frac": "event",
+    "pt_ratio_41": "event", "centrality": "event", "eta_spread": "event",
+    "sphericity_T": "event",
+    "n_jets15": "jets", "n_jets30": "jets", "jet1_m": "jets", "jet_m_max": "jets",
+    "jet_ptdxy_max": "jets", "n_bjets": "jets", "ht_jets4": "jets",
+    "dm_W": "jets", "m_jj_maxpt": "jets", "dm_top": "jets", "dm_Wtop": "jets",
+    "m_bb1": "jets", "m_bb2": "jets", "dm_pair": "jets", "dm_higgs": "jets",
+    "m_4jet": "jets", "dR_j12": "jets", "deta_j12": "jets",
+}
