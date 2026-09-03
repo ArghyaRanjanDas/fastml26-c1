@@ -1,0 +1,5 @@
+# checkpoints and per-run logits live here; only summaries are committed
+runs/*/*.pt
+runs/*/logits_*.npy
+*.log
+__pycache__/
