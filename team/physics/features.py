@@ -437,3 +437,64 @@ COST = {
     **{f"p{i+1}{j+1}_lndR": "pair-lead4" for i in range(4) for j in range(i + 1, 4)},
     **{f"p{i+1}{j+1}_lndRc": "pair-lead4" for i in range(4) for j in range(i + 1, 4)},
 }
+
+
+# ------------------------------- features from the two unused candidate fields
+
+# team/physics/COLUMNS.md: we were using 4 of L1T_PUPPIPart's 14 subfields.  Two
+# of the other ten answer questions this module spent the day approximating --
+# `pdgId` flags electrons and muons directly (iso_lead_pt is a hand-built proxy
+# for a lepton), and `dxysig` is the impact-parameter *significance*, which is
+# what a real b-tagger uses where we were feeding raw dxy.  Together they are
+# worth +0.076 AUC vs tt on top of the 11 incumbent event features.
+#
+# dxysig is stored as float16 and overflows: |dxysig| reaches inf and its p99 is
+# in the thousands, so it is clipped before anything else touches it.
+DXYSIG_CLIP = 20.0
+
+EXTRA_FIELD_FEATURES = (
+    "dsig_ptw", "dsig_sum", "dsig_ord3", "dsig_ord4", "n_dsig_gt3",
+    "n_lep", "lead_lep_pt", "lep_pt_frac", "charged_frac",
+)
+
+
+def clip_dxysig(dxysig, mask):
+    """|dxysig|, de-infed and clipped -- the only safe way to use this field."""
+    ds = np.abs(np.nan_to_num(np.asarray(dxysig, dtype=np.float64),
+                              nan=0.0, posinf=DXYSIG_CLIP, neginf=DXYSIG_CLIP))
+    return np.clip(ds, 0.0, DXYSIG_CLIP) * mask
+
+
+def compute_extra_fields(pt, dxysig, pdgid, mask) -> dict:
+    """Event-level features from `dxysig` and `pdgId`. Same contract as compute_raw."""
+    m = mask.astype(np.float64)
+    ds = clip_dxysig(dxysig, m)
+    srt = np.sort(ds, axis=1)[:, ::-1]
+    ht = np.maximum((pt * m).sum(1), 1e-6)
+    pid = np.abs(np.asarray(pdgid)).astype(np.int32)
+    is_e, is_mu = (pid == 11) & mask, (pid == 13) & mask
+    lep = is_e | is_mu
+    lead_lep_pt = (pt * lep).max(1)
+    f = {
+        "dsig_ptw": (pt * ds).sum(1) / ht,      # pT-weighted displacement significance
+        "dsig_sum": ds.sum(1),
+        "dsig_ord3": srt[:, 2],
+        "dsig_ord4": srt[:, 3],
+        "n_dsig_gt3": (ds > 3.0).sum(1).astype(np.float64),
+        "n_lep": lep.sum(1).astype(np.float64),
+        "lead_lep_pt": lead_lep_pt,
+        "lep_pt_frac": lead_lep_pt / ht,
+        "charged_frac": (pt * (((pid == 211) | lep) & mask)).sum(1) / ht,
+    }
+    return {k: np.asarray(v, dtype=np.float32) for k, v in f.items()}
+
+
+TRANSFORM.update({
+    "dsig_ptw": "log1p", "dsig_sum": "log1p", "dsig_ord3": "linear",
+    "dsig_ord4": "linear", "n_dsig_gt3": "linear",
+    "n_lep": "linear", "lead_lep_pt": "log1p", "lep_pt_frac": "linear",
+    "charged_frac": "linear",
+})
+# All nine are O(16) reductions over fields the trigger already has per candidate:
+# adds, compares and one sorting network.  No DSP, no new pair table.
+COST.update({k: "event" for k in EXTRA_FIELD_FEATURES})

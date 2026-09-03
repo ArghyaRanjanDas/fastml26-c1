@@ -59,6 +59,8 @@ STUDENTS = [
     ("c2_canon", "**canonical set**: 11 channels + max-pool + 8 event features", "15,872"),
     ("c2_canon_narrow", "canonical set, φ 24-12-8", "10,368"),
     ("c2_canon_8p", "canonical set, leading 8 candidates", "7,936"),
+    ("c2_canon3", "canonical + dxysig/pdgId features, φ 24-12-8", "10,368"),
+    ("c2_canon3_wide", "canonical + dxysig/pdgId features, φ 32-16-8", "15,872"),
 ]
 
 
@@ -74,6 +76,9 @@ def main():
     s1, s2, s3, tt = load("stage1_alone.json"), load("stage2_marginal.json"), \
         load_greedy(), load("ttmodes.json")
     s4 = load("stage4_derived.json")
+    s6, s7, s8 = load("stage6_diagnostic.json"), load("stage7_newfields.json"), \
+        load("stage8_tophad.json")
+    mixture = load("dataset_mixture.json")
     out = []
     A = out.append
 
@@ -268,6 +273,135 @@ def main():
         A("costing of every one of these — formula, cost class, fixed-point rewrite — is in")
         A("`team/fpga/FEATURES.md`.\n")
 
+    if s6:
+        A("## Stage 6 — is the student limited by its inputs or by its shape?\n")
+        A("Gradient-boosted trees on **event scalars only** — no particle branch at all —")
+        A("on the same train300k/eval100k split the DeepSet rows use.\n")
+        A("| setup | cols | AUC (all) | vs QCD | vs tt | vs W+jets |")
+        A("|---|---|---|---|---|---|")
+        for r in s6["rows"]:
+            A(f"| {r['setup']} | {r['n_cols']} | {r['auc_all']:.4f} | {r['auc_qcd']:.4f} | "
+              f"{r['auc_tt']:.4f} | {r['auc_w']:.4f} |")
+        for label, (aa, q, t, w) in s6["reference"].items():
+            A(f"| *{label}* | — | {aa:.4f} | {q:.4f} | {t:.4f} | {w:.4f} |")
+        A("")
+        A("**The answer is feature content, not representation.** The 11 incumbent scalars")
+        A("alone reach 0.8742 against the DeepSet's 0.8840 — the entire 16-candidate")
+        A("particle branch is worth about 0.010. Give the same trees the event scalars this")
+        A("lane built and they reach 0.8998, *beating* the DeepSet by 0.016 with no")
+        A("per-particle processing whatsoever, and 0.9052 with everything. Hours spent on")
+        A("features have been paying roughly twice what hours spent on architecture would.\n")
+        A("Two riders. The ceiling here is a 100-tree GBDT, not something that fits an SLR —")
+        A("it says where the information is, not what to ship. And the jet-clustered scalars")
+        A("(row D) are the part of the ceiling a trigger cannot afford; the affordable row C")
+        A("is already 0.8998.\n")
+
+    if s7:
+        b = s7["baseline"]
+        A("## Stage 7 — the two parquet fields we were not reading\n")
+        A("`team/physics/COLUMNS.md` inventories the files: we use 4 of `L1T_PUPPIPart`'s 14")
+        A("subfields. Two of the other ten answer questions this lane spent the day")
+        A("approximating — **`pdgId`** flags electrons and muons directly (`iso_lead_pt` is a")
+        A("hand-built proxy for exactly that), and **`dxysig`** is the impact-parameter")
+        A("*significance*, the variable a real b-tagger uses, where we feed raw `dxy`.")
+        A("Trees on the 11 incumbent scalars, plus each block (train/eval read straight from")
+        A("parquet, 120k train / 60k eval):\n")
+        A("| features | AUC (all) | vs tt | vs QCD | vs W+jets |")
+        A("|---|---|---|---|---|")
+        A(f"| 11 event features | {b[0]:.4f} | {b[1]:.4f} | {b[2]:.4f} | {b[3]:.4f} |")
+        for r in s7["rows"]:
+            A(f"| {r['block']} | {r['auc_all']:.4f} | {r['auc_tt']:.4f} | {r['auc_qcd']:.4f} | "
+              f"{r['auc_w']:.4f} |")
+        A("")
+        A("**+0.036 overall and +0.076 vs tt from two fields already on disk** — more than")
+        A("every hand-made feature in this document put together. The strongest singles vs tt:")
+        top = sorted(s7["singles"].items(), key=lambda kv: -kv[1])[:6]
+        A("  " + ", ".join(f"`{k}` {v:.3f}" for k, v in top) + ".\n")
+        A("`dxysig` is stored as float16 and overflows — |dxysig| reaches `inf` and its p99 is")
+        A("in the thousands — so it must be clipped (20.0 here) before anything touches it.")
+        A("`data.py` now reads both fields (only when a feature needs them) and exposes nine")
+        A("derived event scalars; all nine are O(16) reductions, no DSP, no new pair table.\n")
+
+    if s8:
+        A("## Stage 8 — hadronic tt: is there a top tag in the candidates?\n")
+        A("The lepton features fixed the easy tt modes and left the hard one (0.708 vs")
+        A("hadronic tt on the canonical set). All-hadronic tt is a W→qq inside a t→Wb, so:")
+        A("the 15 dijet masses among the leading 6 candidates, `min |m_jj − 80|`, and the 20")
+        A("trijet masses, `min |m_jjj − 173|`. Cheap, because for massless constituents")
+        A("`m_ijk² = m_ij² + m_ik² + m_jk²` — the 20 triples are adds once the 15 pairs exist.\n")
+        A("| on top of the canonical 19 | tt hadronic | tt semi-lep | tt leptonic | QCD | W+jets | all bkg |")
+        A("|---|---|---|---|---|---|---|")
+        for label, r in s8["blocks"].items():
+            A(f"| {label} | {r['tt_hadronic']:.4f} | {r['tt_semilep']:.4f} | "
+              f"{r['tt_leptonic']:.4f} | {r['QCD']:.4f} | {r['Wjets']:.4f} | {r['all']:.4f} |")
+        A("")
+        A("**The top tag is dead: +0.0003 against hadronic tt.** And the single-feature numbers")
+        A("say why it was never going to work — `dm_top6` scores 0.571 against *hadronic* tt")
+        A("and 0.651 against *leptonic* tt. A real top tag would do the opposite. It is")
+        A("picking up generic kinematics, not a resonance: the inputs are particle-flow")
+        A("candidates, not jets, so two of the leading six routinely come from the same jet")
+        A("and the leading six rarely span two tops. This is the third independent way the")
+        A("same conclusion has arrived (jet-clustered `dm_W`/`dm_top` +0.002, the HH dijet")
+        A("pairing `dm_higgs` +0.000, and now this) — **mass reconstruction is not available")
+        A("at this input granularity, and no more hours should go into it.**\n")
+        A("**The |dxy| order statistics are the opposite story: +0.017 against hadronic tt,**")
+        A("the mode nothing else moved, plus +0.006 semi-leptonic and +0.011 vs QCD, for four")
+        A("numbers and a comparator network. They are in `data.py`'s canonical set.\n")
+
+    if mixture:
+        A("## The organizers' eval mixture is tt-dominated, and ours is not\n")
+        ev = mixture["eval"]
+        tot = sum(v["events"] for v in ev.values())
+        bkg = {}
+        for k, v in ev.items():
+            if v["group"] != "HH_4b":
+                bkg[v["group"]] = bkg.get(v["group"], 0) + v["events"]
+        tb = sum(bkg.values())
+        A(f"Row counts straight out of `eval/` ({tot:,} events, 47.6% of them signal):\n")
+        A("| process | events | share of background |")
+        A("|---|---|---|")
+        for k, v in ev.items():
+            share = "— (signal)" if v["group"] == "HH_4b" else f"{v['events']/tb*100:.2f}%"
+            A(f"| `{k}` | {v['events']:,} | {share} |")
+        A("")
+        A("Grouped, the official background is **QCD " + f"{bkg['QCD']/tb*100:.1f}%, tt "
+          f"{bkg['tt']/tb*100:.1f}%, W+jets {bkg['Wjets']/tb*100:.1f}%" + "** — against our")
+        A("even thirds. So **no: the official metric weights QCD far *less* than our eval")
+        A("slice does (9% against 33%), and tt far more (55% against 33%).** Our worst")
+        A("background is the official metric's dominant one. Re-weighting our saved eval")
+        A("scores to those proportions (AUC is a rank statistic, so only the background")
+        A("composition matters):\n")
+        A("| run | our even mix | official eval mix | Δ |")
+        A("|---|---|---|---|")
+        for tag, a0, a1 in [("B1e_16p_1M", 0.88687, 0.85180), ("c2_base_cpu", 0.88397, 0.84761),
+                            ("c2_pair4", 0.88785, 0.85455), ("c2_rich", 0.89758, 0.86821),
+                            ("c2_canon", 0.90099, 0.87300),
+                            ("c2_canon_narrow", 0.90150, 0.87504)]:
+            A(f"| `{tag}` | {a0:.5f} | {a1:.5f} | {a1-a0:+.5f} |")
+        A("")
+        A("Every number drops about 0.03 under the official mixture — and the tt work gains")
+        A("in importance rather than losing it: `c2_canon_narrow` beats `B1e_16p_1M` by")
+        A("+0.0146 on our slice and by **+0.0232** on the organizers'. Within tt the three")
+        A("decay modes are equal in `eval/` (200k each), which matches our sampling; the")
+        A("Standard-Model-branching-fraction caveat earlier in this section is about physical")
+        A("realism, not about the challenge metric.\n")
+
+    A("## `train4M` is built and waiting — for c1\n")
+    A("`team/cache/train4M/` (5.6 GB on disk), built on the CPU box with the canonical")
+    A("input set: **X (7,569,258, 16, 11) float32, F (7,569,258, 19), y, group**, streamed")
+    A("from parquet so peak memory stayed near 11 GB. `train.py` reads it with no change —")
+    A("`--train-tag train4M --eval-tag eval100k_c2 --pool meanmax`.\n")
+    A("**Two things to know before you use it.** First, it is 4,000,000 signal against")
+    A("3,569,258 background, not 4M+4M: QCD ran out. The whole `train/QCD_HT250toInf`")
+    A("directory holds 902,592 events, so a QCD budget of 1,333,333 could not be met.")
+    A("The background is therefore **QCD 25.3%, tt 37.4%, W+jets 37.4%**, not even thirds.")
+    A("Second, that is *closer* to the organizers' eval mixture (QCD 9%, tt 55%, W 36%) than")
+    A("even thirds is, so it is arguably the better training mixture — but it is a different")
+    A("mixture from `train1M`, and a model trained on it is not a clean A/B against a")
+    A("`train1M` row. If you want strict even thirds at this scale the ceiling is")
+    A("2,707,776 background events (3 × 902,592).\n")
+    A("A `train4M` cache with the *newer* `dxysig`/`pdgId` features (F of 31 rather than 19)")
+    A("is a rebuild away; say the word and it runs.\n")
     A("## What to take, and what to leave\n")
     A("Answering the two questions that were asked, with the numbers above:\n")
     A("**1. Ranked, the teacher's derived quantities.** The 6 per-candidate `rich` channels")

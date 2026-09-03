@@ -560,6 +560,7 @@ as what it is worth. Multiply-accumulates per event, at φ 32-16-8 / ρ 32-16:
 | `c2_rich` | + 6 teacher per-candidate channels (φ sees 11) | 15,872 | 2,249 | 0.89758 | 0.7886 | 0.9328 | 0.9713 | 0.1988 |
 | `c2_rich_mm` | + those channels AND max-pool | 15,872 | 2,521 | 0.89879 | 0.7913 | 0.9327 | 0.9724 | 0.2017 |
 | `c2_canon` | **canonical set**: 11 channels + max-pool + 8 event features | 15,872 | 2,777 | 0.90099 | 0.7961 | 0.9339 | 0.9729 | 0.2163 |
+| `c2_canon_narrow` | canonical set, φ 24-12-8 | 10,368 | 2,421 | 0.90150 | 0.8008 | 0.9316 | 0.9721 | 0.2075 |
 | *(reference)* `ds_big_s0` teacher, 72k params, 2M events | — | — | 72,717 | 0.91515 | 0.8261 | 0.9436 | 0.9757 | 0.2717 |
 
 Max-pooling on its own is worth +0.0005. The 24 pair scalars are worth +0.013 vs tt.
@@ -621,6 +622,146 @@ All eight are standardized with frozen constants in `data.EXTRA_STANDARDIZE`
 firmware, and it measures the same (+0.0158 vs +0.0156 AUC vs tt). Full firmware
 costing of every one of these — formula, cost class, fixed-point rewrite — is in
 `team/fpga/FEATURES.md`.
+
+## Stage 6 — is the student limited by its inputs or by its shape?
+
+Gradient-boosted trees on **event scalars only** — no particle branch at all —
+on the same train300k/eval100k split the DeepSet rows use.
+
+| setup | cols | AUC (all) | vs QCD | vs tt | vs W+jets |
+|---|---|---|---|---|---|
+| A  11 event features only | 11 | 0.8742 | 0.9173 | 0.7392 | 0.9661 |
+| B  A + |dxy| order statistics | 15 | 0.8813 | 0.9279 | 0.7472 | 0.9689 |
+| C  A + affordable event scalars | 56 | 0.8998 | 0.9327 | 0.7948 | 0.9718 |
+| D  C + jet-clustered scalars | 74 | 0.9038 | 0.9359 | 0.8030 | 0.9724 |
+| E  D + rich summaries + pair distances | 128 | 0.9052 | 0.9361 | 0.8064 | 0.9730 |
+| *B1e_16p_1M (2,057 params, 2M events, GPU)* | — | 0.8869 | 0.9303 | 0.7587 | 0.9716 |
+| *c2_base_cpu (same net, 600k events, CPU)* | — | 0.8840 | 0.9292 | 0.7514 | 0.9712 |
+| *c2_canon (canonical inputs, 600k, CPU)* | — | 0.9010 | 0.9339 | 0.7961 | 0.9729 |
+
+**The answer is feature content, not representation.** The 11 incumbent scalars
+alone reach 0.8742 against the DeepSet's 0.8840 — the entire 16-candidate
+particle branch is worth about 0.010. Give the same trees the event scalars this
+lane built and they reach 0.8998, *beating* the DeepSet by 0.016 with no
+per-particle processing whatsoever, and 0.9052 with everything. Hours spent on
+features have been paying roughly twice what hours spent on architecture would.
+
+Two riders. The ceiling here is a 100-tree GBDT, not something that fits an SLR —
+it says where the information is, not what to ship. And the jet-clustered scalars
+(row D) are the part of the ceiling a trigger cannot afford; the affordable row C
+is already 0.8998.
+
+## Stage 7 — the two parquet fields we were not reading
+
+`team/physics/COLUMNS.md` inventories the files: we use 4 of `L1T_PUPPIPart`'s 14
+subfields. Two of the other ten answer questions this lane spent the day
+approximating — **`pdgId`** flags electrons and muons directly (`iso_lead_pt` is a
+hand-built proxy for exactly that), and **`dxysig`** is the impact-parameter
+*significance*, the variable a real b-tagger uses, where we feed raw `dxy`.
+Trees on the 11 incumbent scalars, plus each block (train/eval read straight from
+parquet, 120k train / 60k eval):
+
+| features | AUC (all) | vs tt | vs QCD | vs W+jets |
+|---|---|---|---|---|
+| 11 event features | 0.8710 | 0.7314 | 0.9150 | 0.9666 |
+| + dxysig block (10) | 0.8819 | 0.7470 | 0.9285 | 0.9700 |
+| + pdgId block (9) | 0.8865 | 0.7711 | 0.9199 | 0.9685 |
+| + both (19) | 0.9065 | 0.8076 | 0.9371 | 0.9746 |
+
+**+0.036 overall and +0.076 vs tt from two fields already on disk** — more than
+every hand-made feature in this document put together. The strongest singles vs tt:
+  `dsig_ptw` 0.687, `dsig_sum` 0.672, `dsig_mean` 0.672, `n_dsig_gt5` 0.672, `n_dsig_gt3` 0.671, `n_dsig_gt2` 0.671.
+
+`dxysig` is stored as float16 and overflows — |dxysig| reaches `inf` and its p99 is
+in the thousands — so it must be clipped (20.0 here) before anything touches it.
+`data.py` now reads both fields (only when a feature needs them) and exposes nine
+derived event scalars; all nine are O(16) reductions, no DSP, no new pair table.
+
+## Stage 8 — hadronic tt: is there a top tag in the candidates?
+
+The lepton features fixed the easy tt modes and left the hard one (0.708 vs
+hadronic tt on the canonical set). All-hadronic tt is a W→qq inside a t→Wb, so:
+the 15 dijet masses among the leading 6 candidates, `min |m_jj − 80|`, and the 20
+trijet masses, `min |m_jjj − 173|`. Cheap, because for massless constituents
+`m_ijk² = m_ij² + m_ik² + m_jk²` — the 20 triples are adds once the 15 pairs exist.
+
+| on top of the canonical 19 | tt hadronic | tt semi-lep | tt leptonic | QCD | W+jets | all bkg |
+|---|---|---|---|---|---|---|
+| A  canonical 19 | 0.7083 | 0.7877 | 0.8420 | 0.9158 | 0.9723 | 0.8452 |
+| B  + top6 (6 cols) | 0.7086 | 0.7877 | 0.8418 | 0.9159 | 0.9726 | 0.8453 |
+| C  + dxy order stats (4 cols) | 0.7252 | 0.7936 | 0.8412 | 0.9271 | 0.9740 | 0.8522 |
+| D  + both (10 cols) | 0.7247 | 0.7933 | 0.8407 | 0.9270 | 0.9739 | 0.8519 |
+
+**The top tag is dead: +0.0003 against hadronic tt.** And the single-feature numbers
+say why it was never going to work — `dm_top6` scores 0.571 against *hadronic* tt
+and 0.651 against *leptonic* tt. A real top tag would do the opposite. It is
+picking up generic kinematics, not a resonance: the inputs are particle-flow
+candidates, not jets, so two of the leading six routinely come from the same jet
+and the leading six rarely span two tops. This is the third independent way the
+same conclusion has arrived (jet-clustered `dm_W`/`dm_top` +0.002, the HH dijet
+pairing `dm_higgs` +0.000, and now this) — **mass reconstruction is not available
+at this input granularity, and no more hours should go into it.**
+
+**The |dxy| order statistics are the opposite story: +0.017 against hadronic tt,**
+the mode nothing else moved, plus +0.006 semi-leptonic and +0.011 vs QCD, for four
+numbers and a comparator network. They are in `data.py`'s canonical set.
+
+## The organizers' eval mixture is tt-dominated, and ours is not
+
+Row counts straight out of `eval/` (2,102,226 events, 47.6% of them signal):
+
+| process | events | share of background |
+|---|---|---|
+| `HH_4b` | 1,000,384 | — (signal) |
+| `QCD_HT250toInf` | 100,482 | 9.12% |
+| `tt0123j_5f_ckm_LO_MLM_hadronic` | 200,327 | 18.18% |
+| `tt0123j_5f_ckm_LO_MLM_leptonic` | 200,111 | 18.16% |
+| `tt0123j_5f_ckm_LO_MLM_semiLeptonic` | 200,110 | 18.16% |
+| `WJetsToLNu_13TeV-madgraphMLM-pythia8` | 200,281 | 18.18% |
+| `WJetsToQQ_13TeV-madgraphMLM-pythia8` | 200,531 | 18.20% |
+
+Grouped, the official background is **QCD 9.1%, tt 54.5%, W+jets 36.4%** — against our
+even thirds. So **no: the official metric weights QCD far *less* than our eval
+slice does (9% against 33%), and tt far more (55% against 33%).** Our worst
+background is the official metric's dominant one. Re-weighting our saved eval
+scores to those proportions (AUC is a rank statistic, so only the background
+composition matters):
+
+| run | our even mix | official eval mix | Δ |
+|---|---|---|---|
+| `B1e_16p_1M` | 0.88687 | 0.85180 | -0.03507 |
+| `c2_base_cpu` | 0.88397 | 0.84761 | -0.03636 |
+| `c2_pair4` | 0.88785 | 0.85455 | -0.03330 |
+| `c2_rich` | 0.89758 | 0.86821 | -0.02937 |
+| `c2_canon` | 0.90099 | 0.87300 | -0.02799 |
+| `c2_canon_narrow` | 0.90150 | 0.87504 | -0.02646 |
+
+Every number drops about 0.03 under the official mixture — and the tt work gains
+in importance rather than losing it: `c2_canon_narrow` beats `B1e_16p_1M` by
++0.0146 on our slice and by **+0.0232** on the organizers'. Within tt the three
+decay modes are equal in `eval/` (200k each), which matches our sampling; the
+Standard-Model-branching-fraction caveat earlier in this section is about physical
+realism, not about the challenge metric.
+
+## `train4M` is built and waiting — for c1
+
+`team/cache/train4M/` (5.6 GB on disk), built on the CPU box with the canonical
+input set: **X (7,569,258, 16, 11) float32, F (7,569,258, 19), y, group**, streamed
+from parquet so peak memory stayed near 11 GB. `train.py` reads it with no change —
+`--train-tag train4M --eval-tag eval100k_c2 --pool meanmax`.
+
+**Two things to know before you use it.** First, it is 4,000,000 signal against
+3,569,258 background, not 4M+4M: QCD ran out. The whole `train/QCD_HT250toInf`
+directory holds 902,592 events, so a QCD budget of 1,333,333 could not be met.
+The background is therefore **QCD 25.3%, tt 37.4%, W+jets 37.4%**, not even thirds.
+Second, that is *closer* to the organizers' eval mixture (QCD 9%, tt 55%, W 36%) than
+even thirds is, so it is arguably the better training mixture — but it is a different
+mixture from `train1M`, and a model trained on it is not a clean A/B against a
+`train1M` row. If you want strict even thirds at this scale the ceiling is
+2,707,776 background events (3 × 902,592).
+
+A `train4M` cache with the *newer* `dxysig`/`pdgId` features (F of 31 rather than 19)
+is a rebuild away; say the word and it runs.
 
 ## What to take, and what to leave
 

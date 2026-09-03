@@ -27,7 +27,14 @@ CACHE_ROOT = Path.home() / "fastml26-hackathon" / "team" / "cache"
 N_PARTICLES = 16          # candidates kept per event, matches the intro notebook
 N_FEATURES = 5            # pt, eta, dxy, cos(phi), sin(phi)
 CAND_FIELDS = ("pt", "eta", "phi", "dxy")
+# `dxysig` (impact-parameter significance) and `pdgId` (electron/muon/photon/
+# charged/neutral) are two of the ten L1T_PUPPIPart subfields we were not
+# reading.  They are read only when a feature that needs them is switched on --
+# see team/physics/COLUMNS.md for the full inventory and what they are worth.
+CAND_FIELDS_ID = ("dxysig", "pdgId")
 PARQUET_COLUMNS = [f"L1T_PUPPIPart.{f}" for f in CAND_FIELDS] + ["label"]
+PARQUET_COLUMNS_ID = ([f"L1T_PUPPIPart.{f}" for f in CAND_FIELDS + CAND_FIELDS_ID]
+                      + ["label"])
 
 # label convention from the intro notebook
 LABEL_QCD, LABEL_HH, LABEL_TT, LABEL_W = 0, 1, 2, 3
@@ -231,31 +238,61 @@ EXTRA_FEATURES = (
     # 2pi wrap in firmware -- cos dphi is c_i c_j + s_i s_j from inputs already
     # present.  See team/fpga/FEATURES.md.
     "p12_lndRc", "p13_lndRc", "p14_lndRc", "p23_lndRc", "p24_lndRc", "p34_lndRc",
+    # |dxy| order statistics.  HH->4b has four b hadrons and tt has two, and a
+    # sum cannot tell "few, very displaced" from "many, mildly displaced".
+    # Measured worth: +0.017 AUC against *hadronic* tt, the mode nothing else
+    # moved.  A comparator network in firmware -- zero DSP.
+    "dxy_ord2", "dxy_ord3", "dxy_ord4",
+    # from dxysig / pdgId (needs PARQUET_COLUMNS_ID)
+    "dsig_ptw", "dsig_sum", "dsig_ord3", "dsig_ord4", "n_dsig_gt3",
+    "n_lep", "lead_lep_pt", "lep_pt_frac", "charged_frac",
 )
+
+# which EXTRA_FEATURES need the two extra parquet leaves
+from_id_fields = lambda names: [n for n in names if n.startswith(("dsig_", "n_dsig", "n_lep",
+                                                                 "lead_lep", "lep_pt",
+                                                                 "charged_frac"))]
 
 # (mean, std) of the transformed extra features, measured once over a 300k-event
 # train mixture and then frozen, exactly like EVENT_STANDARDIZE.
 # Re-measure with: python data.py --fit-extra-norm
 EXTRA_STANDARDIZE = {
-    "iso_lead_pt": (3.0265, 0.7147),
-    "n_iso": (1.9184, 1.4955),
+    "iso_lead_pt": (3.0268, 0.7153),
+    "n_iso": (1.9144, 1.4939),
     "p12_lndRc": (-0.2405, 1.7891),
     "p13_lndRc": (-0.1209, 1.6921),
     "p14_lndRc": (-0.0330, 1.6142),
     "p23_lndRc": (-0.1362, 1.6832),
     "p24_lndRc": (-0.0614, 1.6157),
     "p34_lndRc": (-0.0356, 1.5873),
+    "dxy_ord2": (0.1337, 0.2707),
+    "dxy_ord3": (0.0601, 0.1284),
+    "dxy_ord4": (0.0280, 0.0742),
+    "dsig_ptw": (1.1505, 0.8427),
+    "dsig_sum": (2.9604, 1.8748),
+    "dsig_ord3": (9.0687, 9.9101),
+    "dsig_ord4": (6.3336, 9.2517),
+    "n_dsig_gt3": (2.5013, 2.2495),
+    "n_lep": (0.5114, 0.7343),
+    "lead_lep_pt": (1.2703, 1.6553),
+    "lep_pt_frac": (0.0476, 0.0802),
+    "charged_frac": (0.4370, 0.1812),
 }
 
 
-def extra_event_features(pt, eta, phi, dxy, names=None):
+def extra_event_features(pt, eta, phi, dxy, names=None, dxysig=None, pdgid=None):
     """(N, P) raw per-field arrays -> (N, len(EXTRA_FEATURES)) normalized features."""
-    from physics.features import compute_raw, TRANSFORM
+    from physics.features import compute_raw, compute_extra_fields, TRANSFORM
 
     names = EXTRA_FEATURES if names is None else names
     if not names:
         return np.zeros((len(pt), 0), dtype=np.float32)
-    raw = compute_raw(pt, eta, phi, dxy, pt > 0.0)
+    mask = pt > 0.0
+    raw = compute_raw(pt, eta, phi, dxy, mask)
+    if dxysig is not None and pdgid is not None:
+        raw.update(compute_extra_fields(pt, dxysig, pdgid, mask))
+    elif from_id_fields(names):
+        raise ValueError("EXTRA_FEATURES needs dxysig/pdgId; pass them in")
     out = np.empty((len(pt), len(names)), dtype=np.float32)
     for i, n in enumerate(names):
         v = raw[n].astype(np.float32)
@@ -324,6 +361,9 @@ def stream_process(
     X is (n, n_particles, 5) float32 per-particle input, F is (n, 11) float32
     event-level features, y is (n,) int8 holding the dataset label.
     """
+    need_id = bool(extra and from_id_fields(EXTRA_FEATURES))
+    columns = PARQUET_COLUMNS_ID if need_id else PARQUET_COLUMNS
+    read_fields = CAND_FIELDS + CAND_FIELDS_ID if need_id else CAND_FIELDS
     files = sorted(process_dir.glob(f"{process_dir.name}_*.parquet"))[skip_files:]
     if not files:
         raise FileNotFoundError(f"no parquet fragments under {process_dir}")
@@ -333,16 +373,19 @@ def stream_process(
         if seen >= max_events:
             return
         pf = pq.ParquetFile(path)
-        for batch in pf.iter_batches(batch_size=batch_size, columns=PARQUET_COLUMNS):
+        for batch in pf.iter_batches(batch_size=batch_size, columns=columns):
             arr = ak.from_arrow(batch)
             cands = arr["L1T_PUPPIPart"]
-            fields = {f: _pad(cands, f, n_particles) for f in CAND_FIELDS}
+            fields = {f: _pad(cands, f, n_particles) for f in read_fields}
             build = rich_preprocess if rich else preprocess
             X = build(fields["pt"], fields["eta"], fields["phi"], fields["dxy"])
+            ident = ({k: fields[k] for k in CAND_FIELDS_ID} if need_id else
+                     {"dxysig": None, "pdgId": None})
             F = event_features(fields["pt"], fields["eta"], fields["phi"], fields["dxy"])
             if extra:
                 F = np.concatenate([F, extra_event_features(
-                    fields["pt"], fields["eta"], fields["phi"], fields["dxy"])], axis=1)
+                    fields["pt"], fields["eta"], fields["phi"], fields["dxy"],
+                    dxysig=ident["dxysig"], pdgid=ident["pdgId"])], axis=1)
             y = ak.to_numpy(arr["label"]).astype(np.int8)
 
             take = min(len(X), max_events - seen)
@@ -473,23 +516,36 @@ def fit_extra_norm(split: str = "train", n_signal: int = 100_000, n_background: 
 
     Same contract as fit_event_norm: run once when EXTRA_FEATURES changes, paste
     the result into EXTRA_STANDARDIZE, and freeze it, so training, evaluation
-    and firmware all see the same numbers.
+    and firmware all see the same numbers.  Reads the parquet directly because
+    dxysig/pdgId are not recoverable from a built cache.
     """
-    from physics.features import compute_raw, TRANSFORM
+    from physics.features import compute_raw, compute_extra_fields, TRANSFORM
 
     root = DATA_ROOT / split
     budgets = [(p_, n_signal) for p_ in SIGNAL]
     budgets += [(p_, int(round(n_background * p_.weight / 3.0))) for p_ in BACKGROUND]
     acc = {n: [] for n in EXTRA_FEATURES}
     for proc, budget in budgets:
-        for X, F, y in stream_process(root / proc.directory, budget):
-            pt = np.expm1(X[..., 0] * PT_LOG_SCALE)
-            eta, dxy = X[..., 1] * ETA_SCALE, X[..., 2] * DXY_CLIP
-            phi = np.arctan2(X[..., 4], X[..., 3])
-            raw = compute_raw(pt, eta, phi, dxy, X[..., 0] > 0.0)
-            for n in EXTRA_FEATURES:
-                v = raw[n].astype(np.float64)
-                acc[n].append(np.log1p(np.maximum(v, 0.0)) if TRANSFORM[n] == "log1p" else v)
+        seen = 0
+        for path in sorted((root / proc.directory).glob(f"{proc.directory}_*.parquet")):
+            if seen >= budget:
+                break
+            for batch in pq.ParquetFile(path).iter_batches(batch_size=20_000,
+                                                           columns=PARQUET_COLUMNS_ID):
+                cands = ak.from_arrow(batch)["L1T_PUPPIPart"]
+                f = {k: _pad(cands, k, N_PARTICLES) for k in CAND_FIELDS + CAND_FIELDS_ID}
+                take = min(len(f["pt"]), budget - seen)
+                f = {k: v[:take] for k, v in f.items()}
+                seen += take
+                mask = f["pt"] > 0.0
+                raw = compute_raw(f["pt"], f["eta"], f["phi"], f["dxy"], mask)
+                raw.update(compute_extra_fields(f["pt"], f["dxysig"], f["pdgId"], mask))
+                for n in EXTRA_FEATURES:
+                    v = raw[n].astype(np.float64)
+                    acc[n].append(np.log1p(np.maximum(v, 0.0))
+                                  if TRANSFORM[n] == "log1p" else v)
+                if seen >= budget:
+                    break
     print("EXTRA_STANDARDIZE = {")
     for n in EXTRA_FEATURES:
         v = np.concatenate(acc[n])
