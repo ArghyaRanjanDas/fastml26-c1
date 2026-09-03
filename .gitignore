@@ -22,3 +22,6 @@ preprocessing/logs/
 team/cache/
 team/runs/*.npy
 team/*.log
+
+team/physics/cache/
+team/physics/*.log
