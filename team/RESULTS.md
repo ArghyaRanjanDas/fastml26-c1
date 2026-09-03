@@ -186,3 +186,20 @@ python export.py --run B1e_16p              # the primary export
 python verify_export.py --json export/model_2041.json \
        --weights export/model_2041.pt --sample export/eval_sample.npz
 ```
+
+---
+
+# Teacher lane (Purdue AF A100, agent `hh4b`) — soft targets for distillation
+
+Unconstrained teachers trained on `train1M` (1M + 1M, 10 % held out for model selection),
+evaluated on the same `eval100k` slice as every row above. Inputs are *exactly* the
+student's cache tensors; the teacher derives extra per-candidate and pairwise quantities
+from them on the fly (`team/teacher/common.py`). Soft targets = float32 logits in cache
+row order: `team/teacher/soft_targets_{train1M,train300k,eval100k}.npy`
+(`soft_targets_meta.json` says which run they come from). Training: AdamW, warm-up + cosine,
+label smoothing 0.05, bf16, EMA of weights; the run is selected on validation AUC.
+
+| run | model | params | train events | epochs | **AUC (eval)** | vs QCD | vs tt | vs W+jets | eff@99 % rej | train-slice AUC | notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `B1e_16p_1M` (student, for reference) | DeepSet φ32-16-8 ρ32-16 + evt | 2,057 | 2M | 25 | 0.88687 | 0.93027 | 0.75869 | 0.97163 | — | — | the distillation target shape |
+| **`ds_big_s0`** | BigDeepSet φ128-64-32, mean+max, ρ256-128-64, rich feats | 72,717 | 2M | 40 (best 23) | **0.91515** | 0.94363 | **0.82612** | 0.97569 | 0.272 | 0.92046 | **first soft targets (pushed)**. +0.028 overall, +0.067 vs tt over the student. Train/val gap 0.005 → in-sample logits are fine as targets. |

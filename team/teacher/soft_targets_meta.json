@@ -1,0 +1,13 @@
+{
+  "source_run": "ds_big_s0",
+  "model": "deepset",
+  "params": 72717,
+  "eval_auc": 0.9151486951999999,
+  "eval_per_group": {
+    "QCD": 0.9436274828248282,
+    "tt": 0.8261231035310352,
+    "Wjets": 0.9756936828763424
+  },
+  "format": "float32 teacher logits, one per cache row, same order as team/cache/<tag>/X.npy",
+  "label_smoothing": 0.05
+}
