@@ -42,3 +42,36 @@ Elapsed: ~25 min, well inside the 2 h budget before falling back to 2b. **Step 2
 Training runs in `~/hlsenv` with `KERAS_BACKEND=torch` — that venv's torch 2.9.1+cu128
 sees the A10, so the same Keras model is trained on the GPU and converted for HLS, with
 no port between frameworks.
+
+## Step 2a — the architecture, and two more hls4ml limits
+
+`team/attn/model.py` builds one topology with two skins: plain Keras (float) and HGQ2
+(`quantized=True`). Every HGQ layer subclasses its Keras counterpart, so `kernel`/`bias`
+shapes match and `transfer_weights()` warm-starts QAT from the float run.
+
+```
+particles (16, 11)  ->  EinsumDense 'bnc,cd->bnd' d, relu          (= c1's Conv1D k=1 phi)
+                    ->  [ MHA(1 head, key_dim=d) + residual
+                          EinsumDense d->2d relu -> d + residual ] x blocks
+                    ->  mean-pool  ||  max-pool                    (c2: max is free in firmware)
+    + event (11)    ->  concat -> Dense 16 relu -> Dense 1
+```
+
+No positional encoding (Laatu et al.), no LayerNorm (nothing in HGQ2 maps to it, and the
+residual blocks train fine without at this depth). The 11 particle channels are c2's
+`rich` set; like the 5 base ones they are fixed per-candidate functions computed upstream
+of the network, not layers we synthesize — `physics.derived.rich_particles` reproduces
+c2's `cache/eval100k_rich` to 0.0 from the base cache, which is how `train1M_rich` (for
+which c2 built no cache) is derived here.
+
+Two more hls4ml facts found the hard way:
+
+* **`Concatenate` is binary.** `hls4ml/model/layers.py:Concatenate.initialize` asserts
+  exactly two inputs, so `[mean, max, event]` in one call dies on a bare `AssertionError`.
+  Fold pairwise instead.
+* **`QMeanPow2` / `QSum` have no keras-v3 handler** (see step 1).
+
+End-to-end proof on a throwaway 2-epoch quantized run: convert → `compile()` → predict on
+`team/export/eval_sample.npz`, **max |keras − hls| = 0.0**, AUC identical to 5 decimals.
+So for this lane the closure question that cost the DeepSet lane 0.014 AUC does not exist:
+HGQ2 + hls4ml is bit-exact by construction, and the number to manage is EBOPs, not overflow.

@@ -10,3 +10,7 @@ a_d32: 10,033 keras params | 10,033 synthesized weights | cfg={'n_particles': 16
   epoch   9  loss=1.7484  val_auc=0.91110  *
   epoch  10  loss=1.7475  val_auc=0.91099
   epoch  11  loss=1.7467  val_auc=0.91174  *
+  epoch  12  loss=1.7460  val_auc=0.91208  *
+  epoch  13  loss=1.7454  val_auc=0.91203
+  epoch  14  loss=1.7449  val_auc=0.91232  *
+  epoch  15  loss=1.7445  val_auc=0.91261  *
