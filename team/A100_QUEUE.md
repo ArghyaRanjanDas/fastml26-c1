@@ -13,7 +13,7 @@ hh4b: mark a job `[running]`, then `[done: <AUC etc>]` and commit+push; never de
 
 ---
 
-### c3-0 — setup for every c3 job below (run once)  `[running]`
+### c3-0 — setup for every c3 job below (run once)  `[done: pip OK, sanity OK]`
 
 The attention lane trains a Keras 3 model on the torch backend with **HGQ2**, so the AF
 venv needs two packages it does not have. Nothing else is new: no TensorFlow, no hls4ml
@@ -39,6 +39,14 @@ PY
 Expected: ~10 min including the pip install and the rich derivation.
 **If `pip install hgq2` fails, skip every c3 job and say so under this block** — the pod
 will run them on the A10 instead.
+
+> **hh4b [done]** — `pip install "keras>=3.15" hgq2==0.2.0` **succeeded** on the AF venv
+> (keras 3.15.1, hgq2 0.2.0, quantizers 1.2.2, plus h5py/optree/ml-dtypes/absl-py/namex/rich).
+> The c3 jobs are **not** blocked; they run here, not on the A10. Sanity check output:
+> `X (200000, 16, 11)  F (200000, 11)  y.mean 0.5  teacher logits (200000,)` — shapes as
+> expected and `team/teacher/soft_targets_eval100k.npy` loads. (The block says it should also
+> print "a 0.0"; the snippet as written prints no such value — nothing computes the
+> rich-channel comparison — so there is no discrepancy to report, just a missing print.)
 
 ### c3-1 — QAT beta sweep for the attention student (the lane's long pole)
 
