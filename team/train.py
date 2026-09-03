@@ -113,6 +113,7 @@ def main():
     ap.add_argument("--phi", default="64,32,16")
     ap.add_argument("--rho", default="256,128")
     ap.add_argument("--dropout", type=float, default=0.0)
+    ap.add_argument("--pool", default="mean", choices=["mean", "sum", "meanmax"])
     ap.add_argument("--n-particles-use", type=int, default=None,
                     help="feed only the leading N candidates to phi (cache stays at 16). "
                          "Halving particles halves the phi cost, which is the FPGA bill.")
@@ -133,6 +134,10 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--gpu-batches", action="store_true",
+                    help="keep the training tensors on the GPU and index them directly, "
+                         "instead of DataLoader workers. Slower when the box is idle, but "
+                         "immune to CPU contention -- and it leaves the cores free.")
     ap.add_argument("--tag", default=None, help="run name (default: model name)")
     args = ap.parse_args()
 
@@ -174,7 +179,7 @@ def main():
         n_features=n_features, n_event_features=n_event_features,
         phi_dims=dims(args.phi), rho_dims=dims(args.rho),
         dropout=args.dropout, use_event_features=use_evt,
-        event_scale=args.event_scale, pool_norm=args.pool_norm,
+        event_scale=args.event_scale, pool_norm=args.pool_norm, pool=args.pool,
     ).to(device)
     n_params = count_params(model)
     # phi runs once per particle, so this product -- not the parameter count --
@@ -191,23 +196,38 @@ def main():
     print(f"trainable params: {n_params:,}   phi MACs/event: {phi_macs:,} "
           f"({n_particles} particles x {phi_macs // n_particles})")
 
-    loader = torch.utils.data.DataLoader(
-        torch.utils.data.TensorDataset(Xtr_t, Ftr_t, ytr_t),
-        batch_size=args.batch_size, shuffle=True, num_workers=4,
-        pin_memory=True, drop_last=True, persistent_workers=True,
-    )
+    if args.gpu_batches:
+        gX, gF, gy = Xtr_t.to(device), Ftr_t.to(device), ytr_t.to(device)
+        n_train, bs = len(gX), args.batch_size
+        steps = n_train // bs
+
+        def batches():
+            perm = torch.randperm(n_train, device=device)
+            for si in range(steps):
+                i = perm[si * bs:(si + 1) * bs]
+                yield gX[i], gF[i], gy[i]
+        print(f"  GPU-resident batches: "
+              f"{(gX.nbytes + gF.nbytes + gy.nbytes) / 1e6:.0f} MB on device")
+    else:
+        loader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(Xtr_t, Ftr_t, ytr_t),
+            batch_size=args.batch_size, shuffle=True, num_workers=4,
+            pin_memory=True, drop_last=True, persistent_workers=True,
+        )
+        steps = len(loader)
+        batches = lambda: loader
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-        opt, T_max=args.epochs * len(loader), eta_min=args.lr * 1e-3)
+        opt, T_max=args.epochs * steps, eta_min=args.lr * 1e-3)
     criterion = nn.BCEWithLogitsLoss()
 
     ckpt = OUT_DIR / f"{run}_best.pt"
     best_auc, history = -1.0, []
-    print(f"training {args.epochs} epochs, {len(loader)} steps/epoch")
+    print(f"training {args.epochs} epochs, {steps} steps/epoch")
     for epoch in range(1, args.epochs + 1):
         model.train()
         t0, tot, seen = time.perf_counter(), 0.0, 0
-        for xb, fb, yb in loader:
+        for xb, fb, yb in batches():
             xb = xb.to(device, non_blocking=True)
             fb = fb.to(device, non_blocking=True)
             yb = yb.to(device, non_blocking=True)
@@ -245,7 +265,7 @@ def main():
 
     summary = dict(run=run, model=args.model, phi=dims(args.phi), rho=dims(args.rho),
                    dropout=args.dropout, use_event_features=use_evt,
-                   event_scale=args.event_scale, pool_norm=args.pool_norm,
+                   event_scale=args.event_scale, pool_norm=args.pool_norm, pool=args.pool,
                    event_feature_names=list(EVENT_FEATURES) if use_evt else [],
                    params=n_params, phi_macs=phi_macs, n_particles=n_particles,
                    n_particles_use=args.n_particles_use, eval_auc=eval_auc, val_auc=float(best_auc),

@@ -94,10 +94,13 @@ class DeepSetPlus(nn.Module):
                 layers += [nn.Dropout(dropout)]
             d = h
         self.phi = nn.Sequential(*layers)
-        self.pooled_dim = d
-        self.norm = nn.BatchNorm1d(d) if pool_norm else nn.Identity()
+        # "meanmax" concatenates mean- and max-pooling, doubling the pooled width.
+        # Max over particles is comparators only -- no DSP -- so it stays cheap in
+        # firmware, but it is an extra hls4ml layer, so keep it for the teacher.
+        self.pooled_dim = 2 * d if pool == "meanmax" else d
+        self.norm = nn.BatchNorm1d(self.pooled_dim) if pool_norm else nn.Identity()
 
-        layers, d = [], d + self.n_event_features
+        layers, d = [], self.pooled_dim + self.n_event_features
         for i, h in enumerate(rho_dims):
             layers += [nn.Linear(d, h), nn.ReLU()]
             if dropout > 0 and i < len(rho_dims) - 1:
@@ -108,7 +111,15 @@ class DeepSetPlus(nn.Module):
 
     def forward(self, x: torch.Tensor, f: torch.Tensor | None = None) -> torch.Tensor:
         h = self.phi(x)
-        h = h.mean(dim=1) if self.pool == "mean" else h.sum(dim=1)
+        if self.pool == "mean":
+            h = h.mean(dim=1)
+        elif self.pool == "sum":
+            h = h.sum(dim=1)
+        elif self.pool == "meanmax":
+            # phi output is post-ReLU, so max over zero-padded slots is harmless
+            h = torch.cat([h.mean(dim=1), h.amax(dim=1)], dim=1)
+        else:
+            raise ValueError(f"unknown pool {self.pool!r}")
         h = self.norm(h)
         if self.use_event_features:
             if f is None:

@@ -45,7 +45,10 @@ relu = lambda v: np.maximum(v, 0.0)
 h = X
 for W, b in mats[:n_phi]:                      # Conv1D kernel-1 == per-particle Linear
     h = relu(h @ W + b)
-h = h.mean(axis=1)                             # GlobalAveragePooling1D
+
+# GlobalAveragePooling1D, or mean+max concatenated
+h = (np.concatenate([h.mean(axis=1), h.max(axis=1)], axis=1)
+     if spec.get("pool") == "meanmax" else h.mean(axis=1))
 if spec["n_event_features"]:
     F = npz["F"].astype(np.float32)
     assert F.shape[1] == spec["n_event_features"]

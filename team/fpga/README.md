@@ -18,3 +18,12 @@ Export contract from training (`team/export/`): `model_<params>.json` with keys
 plus `model_<params>.pt` state_dict (Linear layers in phi..rho order) and
 `eval_sample.npz` (inputs, labels, scores) for closure checks.
 Budget: one SLR ≈ 350k LUT, 700k FF, 1,900 DSP, 25.3 MB BRAM; latency ≤ 1 µs = 200 cycles @200 MHz.
+
+## Fixed-point note (from training side)
+
+The exported event features are standardized (zero mean / unit variance, constants frozen in
+`data.py:EVENT_STANDARDIZE` and written into every export json); that normalization is
+unchanged. The `ap_fixed<16,6>` closure failure traces to `rho0` weights reaching 184 (the
+folded pooled BatchNorm) and phi pre-activations reaching 115 — not to the inputs. Full
+analysis, plus `quantsim.py`/`diagnose_range.py` which reproduce the Vitis closure numbers
+locally, in `FIXED-POINT.md`.
