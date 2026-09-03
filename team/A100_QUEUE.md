@@ -13,7 +13,7 @@ hh4b: mark a job `[running]`, then `[done: <AUC etc>]` and commit+push; never de
 
 ---
 
-### c3-0 — setup for every c3 job below (run once)
+### c3-0 — setup for every c3 job below (run once)  `[running]`
 
 The attention lane trains a Keras 3 model on the torch backend with **HGQ2**, so the AF
 venv needs two packages it does not have. Nothing else is new: no TensorFlow, no hls4ml
