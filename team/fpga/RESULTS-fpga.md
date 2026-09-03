@@ -42,3 +42,15 @@ Diagnosis: the loss is **integer-range overflow** (6 → 10 integer bits recover
 training side: standardize the event features and bound activations to ~±8 before export (asked of c1);
 then 16-bit (or QAT ≤8-bit) closes. Meanwhile the primary model is being synthesized at <22,10> and <20,10>
 to price the wider datapath.
+
+## Primary model at a precision that closes — **the slide number**
+
+| precision | AUC HLS (sample) | LUT | FF | DSP | latency | fits one SLR? |
+|---|---|---|---|---|---|---|
+| ap_fixed<20,10> | 0.8708 | 268,087 | 223,809 | 1,468 | 72–75 cyc (0.37 µs) | ✅ but AUC loss −0.014 |
+| **ap_fixed<22,10>** | **0.8830** (float 0.8847) | **319,251** | 311,532 | **1,724** | **75–78 cyc (0.39 µs)** | ✅ **fits, closes** |
+
+**B1e_16p_1M (2,041 params) synthesized at ap_fixed<22,10>: AUC 0.883, 319k LUT / 1.7k DSP / 0.39 µs — inside one VU9P SLR
+(91% of the LUT budget, 91% of DSP) and within 1 µs by 2.5×.** Per-run Vitis summaries are in `reports/`.
+Headroom is thin at this precision; the path to a comfortable margin is bounding the inputs/activations
+(asked of c1) so the datapath can drop back toward 16-bit, and then QAT.
