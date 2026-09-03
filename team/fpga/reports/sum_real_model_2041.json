@@ -1,0 +1,16 @@
+{
+ "EstimatedClockPeriod": "3.641",
+ "BestLatency": "71",
+ "WorstLatency": "74",
+ "LUT": "228151",
+ "FF": "182308",
+ "DSP": "1466",
+ "BRAM_18K": "1",
+ "URAM": "0",
+ "tag": "real_model_2041",
+ "params": 2041,
+ "precision": "ap_fixed<16,6>",
+ "reuse": 1,
+ "clock_ns": 5.0,
+ "part": "xcu200-fsgd2104-2-e"
+}
