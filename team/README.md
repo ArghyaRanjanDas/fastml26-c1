@@ -1,37 +1,28 @@
-# team/ — FastML26 Challenge 1 working code
+# Team workflow — FastML26 Challenge 1 (HH→4b vs QCD, trigger level)
 
-| file | what it does |
-|---|---|
-| `data.py` | Streams capped event samples out of the 118 GB parquet dataset and caches them as `.npy`. Never loads a full process. |
-| `models.py` | Binary classifiers (DeepSet baseline, small MLP). One logit, `BCEWithLogitsLoss`. |
-| `train.py` | Trains on the A10, reports eval-slice AUC + per-background AUC + params + latency. |
-| `RESULTS.md` | Running table of every experiment. |
+Everything is done by Claude Code agents; humans decide, agents execute.
 
-## Data pipeline notes
+## The scoreboard
+`team/RESULTS.md` is the single source of truth and Friday's slide. Append one row
+per experiment; never edit others' rows.
 
-* Only the leaf columns `L1T_PUPPIPart.{pt,eta,phi,dxy}` and `label` are read out of
-  parquet. The `L1T_PUPPIPart` struct has 14 subfields; selecting leaves instead of
-  the whole struct is ~4× faster.
-* Every event in this dataset has ≥415 particles, already sorted by descending pT,
-  so keeping 16 is pure truncation. The zero-pad path is kept for generality.
-* Preprocessing uses **fixed constants**, not min/max fitted on the loaded batch as
-  the intro notebook does: `log1p(pt)/8`, `eta/4`, `clip(dxy,±2)/2`, `cos φ`, `sin φ`.
-  Train and inference must agree, and the FPGA build later wants everything inside
-  ~[-1,1] for quantization.
-* Background mixture defaults to an even split over the QCD / tt / W+jets groups.
-  Real trigger rates are QCD-dominated; the even split stops the classifier from
-  ignoring tt and W entirely, and per-group AUCs are reported separately so the
-  mixture choice never hides anything.
+| model | params | AUC (eval) | train events | quant | LUT | FF | DSP | BRAM | latency | notes |
 
-## Usage
+## Conventions
+- One branch per person (`<name>/...`), merge to `main` via PR when a row lands in RESULTS.md.
+- Scripts live in `team/`: `data.py` (streaming parquet loader, capped events), `models.py`,
+  `train.py`. Reuse them; don't fork the loader.
+- Never load the full 132 GB. `data.py` caps events per process.
+- Commit + push after every milestone: pods restart.
 
-```bash
-# build a cache explicitly (train.py does this automatically too)
-python data.py --tag train300k --split train --n-signal 300000 --n-background 300000
-python data.py --tag eval100k  --split eval  --n-signal 100000 --n-background 100000
+## The two halves of the score
+1. **AUC** of the network score, HH_4b vs all backgrounds (QCD, tt, W+jets).
+2. **FPGA feasibility**: hls4ml/Vitis HLS estimate for Xilinx VU9P (`xcu200-fsgd2104-2-e`),
+   latency ≤ 1 µs, fits ONE SLR (~350k LUT, 700k FF, 1,900 DSP, 25.3 MB BRAM).
+   Synthesis runs on Vitis HLS 2024.1 (COS-6PRIME) from an exported model; the pod
+   does training + quantization-aware training (QKeras) in `~/hlsenv`.
 
-# train + evaluate
-python train.py --model deepset --epochs 20
-```
-
-Caches live in `team/cache/` and are gitignored.
+## Division of labour (proposed)
+- physics features: pairwise masses / jet-like clustering of the 16 PUPPI candidates, dxy as a b-proxy
+- model-size sweep: DeepSet & MLP widths, AUC-vs-params curve
+- quantization + synthesis: QKeras QAT, hls4ml config, Vitis report
