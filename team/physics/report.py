@@ -64,6 +64,41 @@ STUDENTS = [
 ]
 
 
+_OFFICIAL_BKG = None
+
+
+def official_auc(tag, d):
+    """AUC of a saved run re-weighted to the organizers' eval background mixture.
+
+    AUC is a rank statistic between the two classes, so only the *background*
+    composition matters; the signal fraction does not enter.
+    """
+    global _OFFICIAL_BKG
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+    sp = RUNS / f"{tag}_eval_scores.npy"
+    mix = load("dataset_mixture.json")
+    if not sp.exists() or mix is None:
+        return None
+    if _OFFICIAL_BKG is None:
+        _OFFICIAL_BKG = {}
+        for v in mix["eval"].values():
+            if v["group"] != "HH_4b":
+                _OFFICIAL_BKG[v["group"]] = _OFFICIAL_BKG.get(v["group"], 0) + v["events"]
+    cache = HERE.parent / "cache" / d["eval_meta"]["tag"]
+    y, g = np.load(cache / "y.npy"), np.load(cache / "group.npy")
+    sc = np.load(sp)
+    if len(sc) != len(y):
+        return None
+    ids, tot = {"QCD": 0, "tt": 2, "Wjets": 3}, sum(_OFFICIAL_BKG.values())
+    ours = {k: int((g == i).sum()) for k, i in ids.items()}
+    n = sum(ours.values())
+    w = np.ones(len(y))
+    for k, i in ids.items():
+        w[(y == 0) & (g == i)] = (_OFFICIAL_BKG[k] / tot) / (ours[k] / n)
+    return float(roc_auc_score(y, sc, sample_weight=w))
+
+
 def run_row(tag):
     p = RUNS / f"{tag}_summary.json"
     if not p.exists():
@@ -211,17 +246,19 @@ def main():
         A("| ρ, +8 from max-pooling | 1,392 | +256; the max itself is comparators, no DSP |")
         A("| 16×16 ΔR table (isolation) | ~512 mults | cos Δφ = c_i c_j + s_i s_j from inputs already there |")
         A("")
-        A("| run | change | φ MACs | params | AUC (eval) | vs tt | vs QCD | vs W+jets | eff@99% |")
-        A("|---|---|---|---|---|---|---|---|---|")
+        A("| run | change | φ MACs | params | AUC (eval) | AUC (official mix) | vs tt | vs QCD | vs W+jets | eff@99% |")
+        A("|---|---|---|---|---|---|---|---|---|---|")
         for tag, desc, cost_s, d in rows:
             if not d:
                 continue
             g = d["per_background_auc"]
-            A(f"| `{tag}` | {desc} | {cost_s} | {d['params']:,} | {d['eval_auc']:.5f} | "
+            off = official_auc(tag, d)
+            offs = f"{off:.5f}" if off else "—"
+            A(f"| `{tag}` | {desc} | {cost_s} | {d['params']:,} | {d['eval_auc']:.5f} | {offs} | "
               f"{g['tt']:.4f} | {g['QCD']:.4f} | {g['Wjets']:.4f} | "
               f"{d['signal_eff']['0.99']:.4f} |")
         A("| *(reference)* `ds_big_s0` teacher, 72k params, 2M events | — | — | 72,717 | "
-          "0.91515 | 0.8261 | 0.9436 | 0.9757 | 0.2717 |")
+          "0.91515 | — | 0.8261 | 0.9436 | 0.9757 | 0.2717 |")
         A("")
         A("Max-pooling on its own is worth +0.0005. The 24 pair scalars are worth +0.013 vs tt.")
         A("The 6 per-candidate channels are worth **+0.037 vs tt**, and the three together")

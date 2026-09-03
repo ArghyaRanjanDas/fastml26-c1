@@ -907,3 +907,73 @@ relational information. A ParT teacher may still change that — but on this evi
 pairwise is the smaller half.
 
 <!-- c2:tt-study:end -->
+
+## Teacher quality is not the bottleneck — student capacity is
+
+The team teacher was upgraded mid-round from `ds_big_s0` (AUC 0.91515, tt 0.82612) to
+`ens_part4`, a 4-member ParT ensemble (AUC 0.92480, tt 0.85181). Same student shape, same
+recipe, re-run against the stronger targets:
+
+| student | teacher | teacher AUC | T | alpha | AUC (eval) | AUC vs tt |
+|---|---|---|---|---|---|---|
+| `rkd_T2_a05` | ds_big_s0 | 0.91515 | 2 | 0.5 | **0.90901** | 0.81188 |
+| `pkd_T2_a07` | ens_part4 | 0.92480 | 2 | 0.7 | 0.90870 | **0.81367** |
+| `pkd_T2_a05` | ens_part4 | 0.92480 | 2 | 0.5 | 0.90805 | 0.81253 |
+| `pkd_T2_a03` | ens_part4 | 0.92480 | 2 | 0.3 | 0.90779 | 0.81121 |
+
+**A teacher +0.0096 better produced a student −0.0003 different.** At 2,777 parameters the
+student is capacity-limited, not supervision-limited, so effort is better spent on inputs
+(c2's rich channels bought +0.022) or on more data than on a stronger teacher.
+
+## Targeting tt in the loss (screened on `train300k_s`, 30 epochs)
+
+| config | overall | vs QCD | **vs tt** | vs W+jets |
+|---|---|---|---|---|
+| baseline | 0.90398 | 0.93626 | 0.80280 | 0.97288 |
+| tt ×2 in the hard term | 0.90409 | 0.93349 | 0.80681 | 0.97195 |
+| tt ×3 | 0.90294 | 0.93003 | 0.80946 | 0.96933 |
+| disagreement-weighted KD | 0.90479 | 0.93615 | 0.80544 | 0.97279 |
+| **tt ×2 + disagreement** | **0.90488** | 0.93437 | **0.80901** | 0.97126 |
+
+**tt upweighting is close to zero-sum**: ×2 buys +0.0040 on tt and pays −0.0028 on QCD and
+−0.0009 on W (net +0.0001 overall); ×3 buys +0.0067 on tt and pays −0.0062/−0.0036 (net
+−0.0010). It moves the operating point rather than improving the model.
+
+**Disagreement weighting is a genuine free gain** — weighting each event by
+`1 + |z_teacher − z_student| / mean` adds +0.0008 overall *and* +0.0026 on tt with no
+measurable QCD/W cost, because it spends capacity on the events the student actually gets
+wrong rather than on a class label. The two compose: together +0.0062 on tt for −0.0019 on
+QCD, the best overall point of the five. Promoted to `train1M_s` as `rich_1M_w2dis`.
+
+## HGQ2 QAT (Lane 2)
+
+**Toy gate passed first**, as the brief required: a 2-layer mean-pool + concat DeepSet in
+`hgq.layers` converts through `hls4ml` (Vitis, xcu200) with csim matching Keras to 1e-3 —
+and so does the mean+max variant our student actually uses, which was the real risk.
+`hgq/toy_gate.py`, run before spending any GPU time.
+
+Environment note: `hls4ml[hgq2]` needs a Keras 3 backend and the venv had none. Rather than
+install a second CUDA stack, the venv was rebuilt with `--system-site-packages` and Keras
+runs on the **existing CUDA torch** (`KERAS_BACKEND=torch`) — no JAX, no TensorFlow.
+
+| run | beta0 | epochs | AUC (eval) | vs tt | EBOPs | vs float |
+|---|---|---|---|---|---|---|
+| float reference (`rkd_T2_a05`) | — | — | 0.90901 | 0.81188 | — | — |
+| `qat_b1e-6` | 1e-6 | 12 | 0.89044 | 0.78791 | 853k → **360k** | −0.0186 |
+
+EBOPs — the quantity that drives DSP, now the binding resource at 1,692/1,900 — fell **2.4×**,
+but the AUC cost is far too high: 0.890 is below the 0.895 bar and well below what the PTQ
+path already achieves in real Vitis (0.906). Two causes, both fixable:
+
+* **Val AUC peaked at epoch 6 (0.89477) and then decayed** under rising EBOPs pressure, and
+  the script was saving the *final* epoch. `qat_hgq.py` now keeps the best-val epoch.
+* **12 epochs is far too short.** Warm-started pre-QAT AUC is 0.548 — the learned bit widths
+  start from nothing, so a large part of training is just the quantizers settling.
+
+Lower betas at 30 epochs (1e-7, 3e-7) are running; the long runs are queued for the A100 as
+job `c1-1`. `hgq/convert.py` does the required convert → `compile()` → closure (overall and
+per background) → `write()` → tar into `fpga/projects/<tag>.tar.gz`, with
+`Strategy=distributed_arithmetic`, `RF=1` and **no manual precision** (HGQ2 carries its own
+per-layer widths; overriding them would throw away what QAT trained).
+
+**Not done this round:** the 4-class softmax head. Flagged, not attempted.

@@ -1,0 +1,299 @@
+{
+  "run": "c2_canon3",
+  "model": "deepset_plus",
+  "phi": [
+    24,
+    12,
+    8
+  ],
+  "rho": [
+    32,
+    16
+  ],
+  "dropout": 0.0,
+  "use_event_features": true,
+  "event_scale": 0.2,
+  "pool_norm": true,
+  "pool": "meanmax",
+  "event_feature_names": [
+    "ht",
+    "lead_pt1",
+    "lead_pt2",
+    "lead_pt3",
+    "lead_pt4",
+    "n_cand",
+    "sum_abs_dxy",
+    "max_abs_dxy",
+    "mean_abs_dxy",
+    "m2",
+    "m4"
+  ],
+  "params": 2805,
+  "phi_macs": 10368,
+  "n_particles": 16,
+  "n_particles_use": null,
+  "eval_auc": 0.9153968653,
+  "val_auc": 0.9171644504656954,
+  "per_background_auc": {
+    "QCD": 0.9419929379293792,
+    "tt": 0.8278391368913689,
+    "Wjets": 0.9763566922661546
+  },
+  "signal_eff": {
+    "0.99": 0.22524,
+    "0.999": 0.05488
+  },
+  "epochs": 25,
+  "batch_size": 1024,
+  "lr": 0.002,
+  "train_meta": {
+    "tag": "train300k_c3",
+    "version": 2,
+    "split": "train",
+    "n_signal": 300000,
+    "n_background": 300000,
+    "n_particles": 16,
+    "n_features": 11,
+    "particle_channels": [
+      "log_pt",
+      "eta",
+      "dxy",
+      "cos_phi",
+      "sin_phi",
+      "lnz",
+      "lnE",
+      "cos_dphi_lead",
+      "sin_dphi_lead",
+      "deta_lead",
+      "abs_dxy"
+    ],
+    "event_features": [
+      "ht",
+      "lead_pt1",
+      "lead_pt2",
+      "lead_pt3",
+      "lead_pt4",
+      "n_cand",
+      "sum_abs_dxy",
+      "max_abs_dxy",
+      "mean_abs_dxy",
+      "m2",
+      "m4",
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndRc",
+      "p13_lndRc",
+      "p14_lndRc",
+      "p23_lndRc",
+      "p24_lndRc",
+      "p34_lndRc",
+      "dxy_ord2",
+      "dxy_ord3",
+      "dxy_ord4",
+      "dsig_ptw",
+      "dsig_sum",
+      "dsig_ord3",
+      "dsig_ord4",
+      "n_dsig_gt3",
+      "n_lep",
+      "lead_lep_pt",
+      "lep_pt_frac",
+      "charged_frac"
+    ],
+    "skip_files": 0,
+    "n_events": 599999,
+    "n_pos": 300000,
+    "n_neg": 299999
+  },
+  "eval_meta": {
+    "tag": "eval100k_c3",
+    "version": 2,
+    "split": "eval",
+    "n_signal": 100000,
+    "n_background": 100000,
+    "n_particles": 16,
+    "n_features": 11,
+    "particle_channels": [
+      "log_pt",
+      "eta",
+      "dxy",
+      "cos_phi",
+      "sin_phi",
+      "lnz",
+      "lnE",
+      "cos_dphi_lead",
+      "sin_dphi_lead",
+      "deta_lead",
+      "abs_dxy"
+    ],
+    "event_features": [
+      "ht",
+      "lead_pt1",
+      "lead_pt2",
+      "lead_pt3",
+      "lead_pt4",
+      "n_cand",
+      "sum_abs_dxy",
+      "max_abs_dxy",
+      "mean_abs_dxy",
+      "m2",
+      "m4",
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndRc",
+      "p13_lndRc",
+      "p14_lndRc",
+      "p23_lndRc",
+      "p24_lndRc",
+      "p34_lndRc",
+      "dxy_ord2",
+      "dxy_ord3",
+      "dxy_ord4",
+      "dsig_ptw",
+      "dsig_sum",
+      "dsig_ord3",
+      "dsig_ord4",
+      "n_dsig_gt3",
+      "n_lep",
+      "lead_lep_pt",
+      "lep_pt_frac",
+      "charged_frac"
+    ],
+    "skip_files": 0,
+    "n_events": 200000,
+    "n_pos": 100000,
+    "n_neg": 100000
+  },
+  "timing": {
+    "gpu_batched_us_per_event": 9.654219741150882,
+    "gpu_batch_size": 8192,
+    "cpu_single_event_us": 806.5819516777992
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.42469840823359917,
+      "val_auc": 0.9035649461188633
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.38071341905919603,
+      "val_auc": 0.9076717548252438
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.3737319722008208,
+      "val_auc": 0.9108647638390528
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.36934025571513673,
+      "val_auc": 0.9117589211669989
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.3666111134713696,
+      "val_auc": 0.911809262400235
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.3644446251627616,
+      "val_auc": 0.9143621242230363
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.3631681065292467,
+      "val_auc": 0.9146970811251716
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.3622755388494235,
+      "val_auc": 0.9145498547826177
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.3615407505456139,
+      "val_auc": 0.9148231078255424
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.3608968715966313,
+      "val_auc": 0.9153717056523855
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.3602969029483578,
+      "val_auc": 0.9159100097801254
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.3597775319948142,
+      "val_auc": 0.9158291563515779
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.35933283881851574,
+      "val_auc": 0.9163461741673886
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.35889649391174316,
+      "val_auc": 0.9162688364193208
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.3585680602736898,
+      "val_auc": 0.9166656071845753
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.3582240764963559,
+      "val_auc": 0.9165636630066034
+    },
+    {
+      "epoch": 17,
+      "train_loss": 0.35787654103997535,
+      "val_auc": 0.9169853329899432
+    },
+    {
+      "epoch": 18,
+      "train_loss": 0.35756237462756757,
+      "val_auc": 0.916920271789213
+    },
+    {
+      "epoch": 19,
+      "train_loss": 0.35733457093446935,
+      "val_auc": 0.9170424961322515
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.35702691302127587,
+      "val_auc": 0.9169024372666043
+    },
+    {
+      "epoch": 21,
+      "train_loss": 0.35688578811044713,
+      "val_auc": 0.9171386795499687
+    },
+    {
+      "epoch": 22,
+      "train_loss": 0.356752961421601,
+      "val_auc": 0.9171442030795718
+    },
+    {
+      "epoch": 23,
+      "train_loss": 0.35662944906124355,
+      "val_auc": 0.9171568157499641
+    },
+    {
+      "epoch": 24,
+      "train_loss": 0.3565350364349372,
+      "val_auc": 0.9171644504656954
+    },
+    {
+      "epoch": 25,
+      "train_loss": 0.3564430109350686,
+      "val_auc": 0.9171627676281208
+    }
+  ]
+}
