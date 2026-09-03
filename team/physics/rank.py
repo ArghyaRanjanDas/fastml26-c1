@@ -144,14 +144,24 @@ def stage_marginal(args):
 
 def stage_greedy(args):
     names, Ptr, Ftr, ytr, Pev, Fev, yev, gev = _data(args)
+    pool = list(range(len(names)))
+    if args.pool_from:
+        # forward selection over every feature is 39*k fits; restricting the pool
+        # to the best of stage 2 costs nothing real -- a feature that adds nothing
+        # on its own to the 11 does not suddenly add something next to another one.
+        top = [r["feature"] for r in json.loads((HERE / "stage2_marginal.json").read_text())["rows"]]
+        keep = set(top[:args.pool_from])
+        pool = [i for i, n in enumerate(names) if n in keep]
+        print(f"greedy pool ({len(pool)}): {[names[i] for i in pool]}", flush=True)
     chosen, hist = [], []
     cur = _score(Ftr, ytr, Fev, yev, gev, max_iter=args.max_iter)
     print(f"start: tt {cur[0]:.4f}  all {cur[1]:.4f}", flush=True)
     for step in range(args.k):
         best = None
-        for i, n in enumerate(names):
+        for i in pool:
             if i in chosen:
                 continue
+            n = names[i]
             cols = chosen + [i]
             r = _score(Ftr, ytr, Fev, yev, gev, Ptr[:, cols], Pev[:, cols], args.max_iter)
             if best is None or r[0] > best[1][0]:
@@ -176,6 +186,8 @@ def main():
     ap.add_argument("--n-fit", type=int, default=300_000)
     ap.add_argument("--max-iter", type=int, default=150)
     ap.add_argument("--k", type=int, default=6)
+    ap.add_argument("--pool-from", type=int, default=0,
+                    help="greedy: only consider the top-N features of stage2_marginal.json")
     a = ap.parse_args()
     {"alone": stage_alone, "marginal": stage_marginal, "greedy": stage_greedy}[a.stage](a)
 

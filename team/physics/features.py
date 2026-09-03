@@ -132,7 +132,15 @@ M_W, M_TOP, M_H = 80.4, 172.5, 125.0
 
 def compute(X: np.ndarray) -> dict:
     """(N, 16, 5) cached tensor -> {feature name: (N,) float32}."""
-    pt, eta, phi, dxy, mask = decode(X)
+    return compute_raw(*decode(X))
+
+
+def compute_raw(pt, eta, phi, dxy, mask) -> dict:
+    """Physical (N, P) arrays -> {feature name: (N,) float32}.
+
+    data.py calls this one directly, since it has the physical arrays already;
+    compute() is the entry point for anything working off a built cache.
+    """
     N, P = pt.shape
     m = mask.astype(np.float64)
     px, py, pz, E = _p4(pt, eta, phi, mask)
