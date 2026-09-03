@@ -75,3 +75,19 @@ Take-aways: (1) saturation on every multiply-accumulate costs ~250k LUT and 38 c
 `tsat_16_6` (synth.py now takes `--accum`, `--result`, `--auto-weights N`); (3) the real fix is to bound
 the pre-activations in training (QAT / activation clipping) so plain wrap 16-bit closes with no saturation.
 Summaries: `reports/sum_sat_*.json`.
+
+## Targeted saturation — **new best fitting design** (model_2041, real Vitis, 2026-09-03 16:40 PDT)
+
+Wide *wrap* accumulators, saturation only at the 16-bit layer-output cast, per-layer weight integer bits
+from max|W| (`synth.py --accum 'ap_fixed<24,12>' --result 'ap_fixed<16,6,AP_RND,AP_SAT>' --auto-weights 16`):
+
+| design | AUC HLS (sample) | LUT | FF | DSP | latency | one SLR (350k LUT / 1,900 DSP)? |
+|---|---|---|---|---|---|---|
+| ap_fixed<22,10> wrap (previous headline) | 0.8830 | 319,251 | — | 1,724 | 75–78 cyc (0.39 µs) | ✅ 91 % LUT |
+| **tsat_16_6**: 16-bit data, accum <24,12> wrap, output SAT, auto weight ints | **0.8815** | **219,316** | 149,434 | 1,411 | 76–79 cyc (0.39 µs) | ✅ **63 % LUT, 74 % DSP** |
+| twrap_16_6_a24: same but no saturation anywhere (closure only) | 0.8794 | | | | | wide accumulators alone recover almost everything |
+| tsat_16_6_w18: same as tsat with 18-bit weights (closure only) | 0.8828 | | | | | +0.001 for 2 more weight bits |
+
+So: −31 % LUT and −18 % DSP versus the 22-bit design at −0.0015 AUC. The headroom (~130k LUT, ~500 DSP)
+is what pays for c2's six extra per-candidate channels (+24 % φ MACs) in the next student.
+Summary: `reports/sum_tsat_16_6.json`. Distributed-arithmetic (da4ml) variants of both designs are synthesizing.
