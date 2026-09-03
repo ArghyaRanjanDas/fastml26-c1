@@ -30,7 +30,10 @@ import itertools
 
 import numpy as np
 
-from features import decode, _dphi
+try:                                  # imported as a package: physics.derived
+    from .features import decode, _dphi
+except ImportError:                   # run with physics/ on sys.path
+    from features import decode, _dphi
 
 PT_LOG_SCALE = 8.0
 N_RICH = 11        # matches common.N_RICH_PART
@@ -42,14 +45,30 @@ def rich_particles(X: np.ndarray) -> np.ndarray:
     Channel order is the teacher's: the 5 cached features, then
     ln(pt/HT)/4, log1p(E)/8, cos Δφ_lead, sin Δφ_lead, Δη_lead/2, |dxy|/2.
     """
-    pt, eta, phi, dxy, mask = decode(X)
+    return _rich(X.astype(np.float64), *decode(X))
+
+
+def rich_from_raw(pt, eta, phi, dxy):
+    """Same 11 channels from *physical* arrays, for data.py's streaming path.
+
+    The first five channels are rebuilt with data.preprocess's constants rather
+    than read back out of a cache, so this does not depend on a cache existing.
+    """
+    from data import preprocess   # local import: physics/ must not need pyarrow
+
+    mask = pt > 0.0
+    return _rich(preprocess(pt, eta, phi, dxy).astype(np.float64),
+                 pt * mask, eta, phi, dxy, mask)
+
+
+def _rich(X: np.ndarray, pt, eta, phi, dxy, mask) -> np.ndarray:
     m = mask.astype(np.float64)
     ht = np.maximum((pt * m).sum(1, keepdims=True), 1e-6)
     lnz = np.log(np.maximum(pt, 1e-6) / ht) * m / 4.0
     lnE = np.log1p(pt * np.cosh(eta)) / PT_LOG_SCALE * m
     dphi = _dphi(phi, phi[:, :1])
     deta = (eta - eta[:, :1]) / 2.0
-    x = X.astype(np.float64)
+    x = X
     out = np.stack([x[..., 0], x[..., 1], x[..., 2], x[..., 3], x[..., 4],
                     lnz, lnE, np.cos(dphi), np.sin(dphi), deta, np.abs(x[..., 2])], axis=-1)
     return (out * m[..., None]).astype(np.float32)

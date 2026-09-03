@@ -51,12 +51,14 @@ def load_greedy():
 RUNS = HERE.parent / "runs"
 
 STUDENTS = [
-    ("c2_base_cpu", "control: 11 event features, 5 channels/candidate", "—"),
-    ("c2_meanmax", "+ max-pool alongside mean", "comparators, no DSP"),
-    ("c2_pair4", "+ 24 leading-4 pair scalars (ln ΔR / kT / z / m²)", "24 event scalars"),
-    ("c2_rich", "+ 6 teacher per-candidate channels (φ sees 11)", "+24% φ MACs"),
-    ("c2_rich_mm", "+ those channels AND max-pool", "+24% φ MACs"),
-    ("c2_ttfeat", "+ c2's 3 tt features", "see above"),
+    ("c2_base_cpu", "control: 11 event features, 5 channels/candidate", "12,800"),
+    ("c2_meanmax", "+ max-pool alongside mean", "12,800"),
+    ("c2_pair4", "+ 24 leading-4 pair scalars (ln ΔR / kT / z / m²)", "12,800"),
+    ("c2_rich", "+ 6 teacher per-candidate channels (φ sees 11)", "15,872"),
+    ("c2_rich_mm", "+ those channels AND max-pool", "15,872"),
+    ("c2_canon", "**canonical set**: 11 channels + max-pool + 8 event features", "15,872"),
+    ("c2_canon_narrow", "canonical set, φ 24-12-8", "10,368"),
+    ("c2_canon_8p", "canonical set, leading 8 candidates", "7,936"),
 ]
 
 
@@ -204,15 +206,67 @@ def main():
         A("| ρ, +8 from max-pooling | 1,392 | +256; the max itself is comparators, no DSP |")
         A("| 16×16 ΔR table (isolation) | ~512 mults | cos Δφ = c_i c_j + s_i s_j from inputs already there |")
         A("")
-        A("| run | change | φ cost | params | AUC (eval) | vs tt | vs QCD | vs W+jets |")
-        A("|---|---|---|---|---|---|---|---|")
+        A("| run | change | φ MACs | params | AUC (eval) | vs tt | vs QCD | vs W+jets | eff@99% |")
+        A("|---|---|---|---|---|---|---|---|---|")
         for tag, desc, cost_s, d in rows:
             if not d:
                 continue
             g = d["per_background_auc"]
             A(f"| `{tag}` | {desc} | {cost_s} | {d['params']:,} | {d['eval_auc']:.5f} | "
-              f"{g['tt']:.4f} | {g['QCD']:.4f} | {g['Wjets']:.4f} |")
+              f"{g['tt']:.4f} | {g['QCD']:.4f} | {g['Wjets']:.4f} | "
+              f"{d['signal_eff']['0.99']:.4f} |")
+        A("| *(reference)* `ds_big_s0` teacher, 72k params, 2M events | — | — | 72,717 | "
+          "0.91515 | 0.8261 | 0.9436 | 0.9757 | 0.2717 |")
         A("")
+        A("Max-pooling on its own is worth +0.0005. The 24 pair scalars are worth +0.013 vs tt.")
+        A("The 6 per-candidate channels are worth **+0.037 vs tt**, and the three together")
+        A("(`c2_canon`) are **+0.045 vs tt and +0.017 overall over the control**, taking signal")
+        A("efficiency at 99% background rejection from 0.174 to 0.216. That is 2,777 parameters")
+        A("and 300k training events reaching 0.796 vs tt, against 0.826 for a 72k-parameter")
+        A("teacher trained on 2M — most of the teacher's advantage was its inputs, not its size.\n")
+
+        A("### The canonical student input set — tensor layout for c1\n")
+        A("`data.py` now builds it behind two flags. Nothing changes by default: a cache built")
+        A("without them is byte-identical to before.\n")
+        A("```bash")
+        A("python data.py --tag train1M_c2  --split train --n-signal 1000000 --n-background 1000000 \\")
+        A("       --rich-particles --extra-features")
+        A("python data.py --tag eval100k_c2 --split eval  --n-signal  100000 --n-background  100000 \\")
+        A("       --rich-particles --extra-features")
+        A("python train.py --model deepset_plus --phi 32,16,8 --rho 32,16 --pool meanmax \\")
+        A("       --pool-norm --event-scale 0.2 --epochs 25 \\")
+        A("       --train-tag train1M_c2 --eval-tag eval100k_c2 --tag <name>")
+        A("```")
+        A("`train.py` needs no change: it takes the per-candidate width from `Xtr.shape[2]` and")
+        A("the event width from `Ftr.shape[1]`. `--pool meanmax` is the pooling you already added.\n")
+        A("**X — `(N, 16, 11)` float32.** Channels 0-4 are exactly what they were; 5-10 are new.")
+        A("Order matters to anything reading an export:\n")
+        A("| ch | name | value |")
+        A("|---|---|---|")
+        for i, (n, v) in enumerate([
+                ("log_pt", "log1p(pt) / 8"), ("eta", "η / 4"), ("dxy", "clip(dxy, ±2) / 2"),
+                ("cos_phi", "cos φ"), ("sin_phi", "sin φ"),
+                ("lnz", "ln(pt / HT) / 4"), ("lnE", "log1p(pt cosh η) / 8"),
+                ("cos_dphi_lead", "cos(φ − φ₁)"), ("sin_dphi_lead", "sin(φ − φ₁)"),
+                ("deta_lead", "(η − η₁) / 2"), ("abs_dxy", "|dxy| / 2")]):
+            A(f"| {i} | `{n}` | {v} |")
+        A("")
+        A("Channels 5-10 are the teacher's, in the teacher's order, and match")
+        A("`teacher/common.py:particle_features(rich=True)` to 2e-7 — so teacher and student")
+        A("consume the identical tensor and the published soft targets stay valid.\n")
+        A("**F — `(N, 19)` float32.** The 11 incumbent event features unchanged, then:\n")
+        A("| idx | name | value |")
+        A("|---|---|---|")
+        A("| 11 | `iso_lead_pt` | log1p(pT of the most isolated pT>10 candidate), standardized |")
+        A("| 12 | `n_iso` | number of pT>10 candidates with cone-pT/pT < 0.15, standardized |")
+        A("| 13-18 | `p12_lndRc` … `p34_lndRc` | ½ln(Δη² + 2(1−cosΔφ)) for the 6 pairs among the leading 4 |")
+        A("")
+        A("All eight are standardized with frozen constants in `data.EXTRA_STANDARDIZE`")
+        A("(re-measure with `python data.py --fit-extra-norm`). The pair distance uses")
+        A("`2(1−cosΔφ)` rather than `Δφ²` deliberately: it needs no atan2 and no 2π wrap in")
+        A("firmware, and it measures the same (+0.0158 vs +0.0156 AUC vs tt). Full firmware")
+        A("costing of every one of these — formula, cost class, fixed-point rewrite — is in")
+        A("`team/fpga/FEATURES.md`.\n")
 
     A("## What to take, and what to leave\n")
     A("Answering the two questions that were asked, with the numbers above:\n")
@@ -229,14 +283,15 @@ def main():
     A("  (already summed), ln E needs cosh η, Δφ/Δη are differences against the leading")
     A("  candidate, |dxy| is an absolute value. The catch is that they widen φ, the block")
     A("  the FPGA lane already has at 91% of an SLR — so take them *and* pay for them by")
-    A("  narrowing φ or dropping to 8 candidates (rows `c2_rich_narrow` / `c2_rich_8p`,")
+    A("  narrowing φ or dropping to 8 candidates (rows `c2_canon_narrow` / `c2_canon_8p`,")
     A("  both cheaper than today's baseline).")
     A("* **Max-pooling alongside mean — take it.** Comparators, no DSP, +8 inputs to ρ.")
     A("* **`iso_lead_pt` (and `n_iso`, free once the ΔR table exists) — take them.** One")
     A("  event-level scalar is worth more against tt (+0.024) than all 24 leading-4 pair")
     A("  numbers together (+0.016), and it goes in after the pool where there is room.")
-    A("* **Pair quantities — take ln ΔR of the leading-4 pairs, if anything.** 6 scalars,")
-    A("  +0.016. Adding ln kT and ln m² on top buys +0.000 (they are the same information");
+    A("* **Pair quantities — take ln ΔR of the leading-4 pairs.** 6 scalars, +0.016 in the")
+    A("  proxy and +0.013 vs tt in the real student. Adding ln kT and ln m² on top buys")
+    A("  +0.000 (they are the same information");
     A("  in different coordinates); ln z buys nothing anywhere.")
     A("* **A full pairwise block — no.** Pooling all 120 pairs into mean/min/max/std keeps")
     A("  only +0.009 of the +0.023 that the explicit leading-6 pairs give, so the value is")

@@ -164,11 +164,17 @@ def compute_raw(pt, eta, phi, dxy, mask) -> dict:
     f["min_dphi_mpt"] = dphi_lead.min(1)
 
     # ---- isolation (the lepton side of leptonic tt) -------------------------
-    dr2 = ((eta[:, :, None] - eta[:, None, :]) ** 2
-           + _dphi(phi[:, :, None], phi[:, None, :]) ** 2)
+    deta_ij = eta[:, :, None] - eta[:, None, :]
+    dphi_ij = _dphi(phi[:, :, None], phi[:, None, :])
+    dr2 = deta_ij ** 2 + dphi_ij ** 2
+    # the multiply-only metric: 2(1 - cos dphi) needs no atan2 and no wrap, and
+    # agrees with dphi^2 to fourth order (0.16 vs 0.1578 at the cone edge)
+    dr2c = deta_ij ** 2 + 2.0 * (1.0 - np.cos(dphi_ij))
     pair = mask[:, :, None] & mask[:, None, :]
     np.einsum("ijj->ij", dr2)[:] = 1e9          # drop self-pairs
+    np.einsum("ijj->ij", dr2c)[:] = 1e9
     cone = pair & (dr2 < 0.16)
+    cone_c = pair & (dr2c < 0.16)
     iso_sum = (pt[:, None, :] * cone).sum(2)    # pT around each candidate, R<0.4
     with np.errstate(divide="ignore", invalid="ignore"):
         iso = np.where(mask, iso_sum / np.maximum(pt, 1e-6), 1e9)
@@ -193,6 +199,15 @@ def compute_raw(pt, eta, phi, dxy, mask) -> dict:
     f["iso_lead_pt_s4"] = np.where(has4, pt[rows, best4], 0.0)
     f["n_iso_s4"] = (hard4 & (iso < 0.15)).sum(1).astype(np.float64)
     f["iso_min_s4"] = np.where(has4, np.minimum(iso_4[rows, best4], 10.0), 10.0)
+    # the same two features off the multiply-only cone, for the firmware version
+    iso_sum_c = (pt[:, None, :] * cone_c).sum(2)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        iso_c = np.where(mask, iso_sum_c / np.maximum(pt, 1e-6), 1e9)
+    iso_hc = np.where(hard, iso_c, 1e9)
+    bc = np.argmin(iso_hc, axis=1)
+    f["iso_lead_pt_c"] = np.where(has_hard, pt[rows, bc], 0.0)
+    f["n_iso_c"] = (hard & (iso_c < 0.15)).sum(1).astype(np.float64)
+
     hard8 = np.zeros_like(hard)
     hard8[:, :8] = hard[:, :8]
     iso_8 = np.where(hard8, iso, 1e9)
@@ -271,6 +286,23 @@ def compute_raw(pt, eta, phi, dxy, mask) -> dict:
     f["dm_higgs"] = np.sqrt((m_hi - M_H) ** 2 + (m_lo - M_H) ** 2)
     f["m_4jet"] = _comb_mass(J, (0, 1, 2, 3))
 
+    # ln dR for the 6 pairs among the leading 4 candidates.  Of ParT's four pair
+    # quantities this is the only one that pays for its columns (stage 4), and 6
+    # numbers after the pool is a size a trigger student can carry.
+    for i in range(4):
+        for j in range(i + 1, 4):
+            de = eta[:, i] - eta[:, j]
+            dp = _dphi(phi[:, i], phi[:, j])
+            f[f"p{i+1}{j+1}_lndR"] = 0.5 * np.log(np.maximum(de * de + dp * dp, 1e-16))
+            # Fixed-point-friendly twin: 2(1 - cos dphi) instead of dphi^2.  cos dphi
+            # is c_i c_j + s_i s_j from the cos/sin already in the input, so this
+            # version needs no atan2 and no wrap -- two multiplies and an add.  It
+            # equals dphi^2 to fourth order and stays monotone in |dphi| all the way
+            # to pi, so it is a reparametrization, not an approximation to check.
+            # Whether the network cares is measured, not assumed (see FEATURES.md).
+            f[f"p{i+1}{j+1}_lndRc"] = 0.5 * np.log(
+                np.maximum(de * de + 2.0 * (1.0 - np.cos(dp)), 1e-16))
+
     d01 = np.sqrt((J["eta"][:, 0] - J["eta"][:, 1]) ** 2 + _dphi(J["phi"][:, 0], J["phi"][:, 1]) ** 2)
     f["dR_j12"] = np.where((jpt[:, 1] > 10.0), d01, 6.0)
     f["deta_j12"] = np.where((jpt[:, 1] > 10.0), np.abs(J["eta"][:, 0] - J["eta"][:, 1]), 6.0)
@@ -305,6 +337,7 @@ TRANSFORM = {
     "iso_min": "linear", "iso_lead_pt": "log1p", "n_iso": "linear",
     "iso_lead_pt_s4": "log1p", "n_iso_s4": "linear", "iso_min_s4": "linear",
     "iso_lead_pt_s8": "log1p", "n_iso_s8": "linear",
+    "iso_lead_pt_c": "log1p", "n_iso_c": "linear",
     "mt_lep_mpt": "log1p",
     "n_dxy_p05": "linear", "n_dxy_p20": "linear", "ptw_dxy": "linear",
     "max_pt_dxy": "log1p", "dxy_lead4": "linear",
@@ -317,6 +350,8 @@ TRANSFORM = {
     "dm_W": "log1p", "m_jj_maxpt": "log1p", "dm_top": "log1p", "dm_Wtop": "log1p",
     "m_bb1": "log1p", "m_bb2": "log1p", "dm_pair": "log1p", "dm_higgs": "log1p",
     "m_4jet": "log1p", "dR_j12": "linear", "deta_j12": "linear",
+    **{f"p{i+1}{j+1}_lndR": "linear" for i in range(4) for j in range(i + 1, 4)},
+    **{f"p{i+1}{j+1}_lndRc": "linear" for i in range(4) for j in range(i + 1, 4)},
 }
 
 
@@ -337,6 +372,7 @@ COST = {
     "iso_min": "pairwise", "iso_lead_pt": "pairwise", "n_iso": "pairwise",
     "iso_lead_pt_s4": "pairwise/4", "n_iso_s4": "pairwise/4", "iso_min_s4": "pairwise/4",
     "iso_lead_pt_s8": "pairwise/2", "n_iso_s8": "pairwise/2",
+    "iso_lead_pt_c": "pairwise", "n_iso_c": "pairwise",
     "mt_lep_mpt": "pairwise",
     "n_dxy_p05": "event", "n_dxy_p20": "event", "ptw_dxy": "event",
     "max_pt_dxy": "event", "dxy_lead4": "event",
@@ -348,4 +384,8 @@ COST = {
     "dm_W": "jets", "m_jj_maxpt": "jets", "dm_top": "jets", "dm_Wtop": "jets",
     "m_bb1": "jets", "m_bb2": "jets", "dm_pair": "jets", "dm_higgs": "jets",
     "m_4jet": "jets", "dR_j12": "jets", "deta_j12": "jets",
+    # only 6 of the 120 pairs, and the leading 4 candidates are known positions:
+    # 6 x (2 subtractions + 2 squares + a log) with no search and no clustering
+    **{f"p{i+1}{j+1}_lndR": "pair-lead4" for i in range(4) for j in range(i + 1, 4)},
+    **{f"p{i+1}{j+1}_lndRc": "pair-lead4" for i in range(4) for j in range(i + 1, 4)},
 }

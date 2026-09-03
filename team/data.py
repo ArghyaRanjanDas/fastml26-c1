@@ -222,12 +222,30 @@ def standardize_event_features(t: np.ndarray) -> np.ndarray:
 #
 # Off by default -- a cache built without --extra-features is byte-identical to
 # what it was before this block existed.
-EXTRA_FEATURES = ()
+EXTRA_FEATURES = (
+    "iso_lead_pt",   # pT of the most isolated candidate with pT>10 (sum pT in dR<0.4)
+    "n_iso",         # how many pT>10 candidates have iso < 0.15
+    # ln dR' for the 6 pairs among the leading 4 candidates, where dR'^2 =
+    # deta^2 + 2(1 - cos dphi).  Identical discriminating power to the textbook
+    # dR (measured: +0.0158 vs +0.0156 AUC vs tt) and it needs no atan2 and no
+    # 2pi wrap in firmware -- cos dphi is c_i c_j + s_i s_j from inputs already
+    # present.  See team/fpga/FEATURES.md.
+    "p12_lndRc", "p13_lndRc", "p14_lndRc", "p23_lndRc", "p24_lndRc", "p34_lndRc",
+)
 
-EXTRA_STANDARDIZE = {}
-"""(mean, std) of the transformed extra features, measured once over the same
-600k-event train mixture as EVENT_STANDARDIZE and then frozen.
-Re-measure with: python data.py --fit-extra-norm."""
+# (mean, std) of the transformed extra features, measured once over a 300k-event
+# train mixture and then frozen, exactly like EVENT_STANDARDIZE.
+# Re-measure with: python data.py --fit-extra-norm
+EXTRA_STANDARDIZE = {
+    "iso_lead_pt": (3.0265, 0.7147),
+    "n_iso": (1.9184, 1.4955),
+    "p12_lndRc": (-0.2405, 1.7891),
+    "p13_lndRc": (-0.1209, 1.6921),
+    "p14_lndRc": (-0.0330, 1.6142),
+    "p23_lndRc": (-0.1362, 1.6832),
+    "p24_lndRc": (-0.0614, 1.6157),
+    "p34_lndRc": (-0.0356, 1.5873),
+}
 
 
 def extra_event_features(pt, eta, phi, dxy, names=None):
@@ -252,6 +270,39 @@ def effective_event_features(extra: bool):
     return list(EVENT_FEATURES) + (list(EXTRA_FEATURES) if extra else [])
 
 
+# ------------------------------------------ rich per-candidate channels (c2)
+
+# The teacher (team/teacher/common.py) feeds phi() 6 derived numbers per
+# candidate on top of the 5 cached ones, and they are worth more to the student
+# than anything else measured in round 3: +0.037 AUC vs tt, +0.0136 overall, for
+# +192 parameters (team/RESULTS.md, c2 section).  All six are O(1) per candidate.
+PARTICLE_CHANNELS = ("log_pt", "eta", "dxy", "cos_phi", "sin_phi")
+RICH_CHANNELS = PARTICLE_CHANNELS + (
+    "lnz",             # ln(pt / HT) / 4
+    "lnE",             # log1p(pt cosh eta) / 8
+    "cos_dphi_lead",   # cos(phi - phi_1)
+    "sin_dphi_lead",   # sin(phi - phi_1)
+    "deta_lead",       # (eta - eta_1) / 2
+    "abs_dxy",         # |dxy| / 2
+)
+N_RICH_FEATURES = len(RICH_CHANNELS)
+
+
+def rich_preprocess(pt, eta, phi, dxy):
+    """(N, P) raw per-field arrays -> (N, P, 11) float32, the canonical student input.
+
+    Channels 0-4 are exactly `preprocess()`; 5-10 are the teacher's derived ones,
+    in the teacher's order, so a model trained on either side sees the same tensor.
+    """
+    from physics.derived import rich_from_raw
+
+    return rich_from_raw(pt, eta, phi, dxy).astype(np.float32)
+
+
+def effective_particle_channels(rich: bool):
+    return list(RICH_CHANNELS if rich else PARTICLE_CHANNELS)
+
+
 # ------------------------------------------------------------------- streaming
 
 def _pad(cands: ak.Array, field: str, n_particles: int) -> np.ndarray:
@@ -266,6 +317,7 @@ def stream_process(
     batch_size: int = 20_000,
     skip_files: int = 0,
     extra: bool = False,
+    rich: bool = False,
 ):
     """Yield (X, F, y) chunks from a process directory until `max_events` is reached.
 
@@ -285,7 +337,8 @@ def stream_process(
             arr = ak.from_arrow(batch)
             cands = arr["L1T_PUPPIPart"]
             fields = {f: _pad(cands, f, n_particles) for f in CAND_FIELDS}
-            X = preprocess(fields["pt"], fields["eta"], fields["phi"], fields["dxy"])
+            build = rich_preprocess if rich else preprocess
+            X = build(fields["pt"], fields["eta"], fields["phi"], fields["dxy"])
             F = event_features(fields["pt"], fields["eta"], fields["phi"], fields["dxy"])
             if extra:
                 F = np.concatenate([F, extra_event_features(
@@ -307,6 +360,7 @@ def load_split(
     skip_files: int = 0,
     verbose: bool = True,
     extra: bool = False,
+    rich: bool = False,
 ):
     """Load a capped, mixed signal+background sample from train/ or eval/.
 
@@ -324,7 +378,7 @@ def load_split(
         if budget <= 0:
             continue
         chunks = list(stream_process(root / proc.directory, budget, n_particles,
-                                     skip_files=skip_files, extra=extra))
+                                     skip_files=skip_files, extra=extra, rich=rich))
         X = np.concatenate([c[0] for c in chunks])
         F = np.concatenate([c[1] for c in chunks])
         y = np.concatenate([c[2] for c in chunks])
@@ -355,7 +409,7 @@ def cache_paths(tag: str):
 
 def build_cache(tag: str, split: str, n_signal: int, n_background: int,
                 n_particles: int = N_PARTICLES, skip_files: int = 0, force: bool = False,
-                extra: bool = False):
+                extra: bool = False, rich: bool = False):
     Xp, Fp, yp, gp, mp = cache_paths(tag)
     if mp.exists() and not force:
         stale = json.loads(mp.read_text()).get("version", 1) < CACHE_VERSION
@@ -366,13 +420,14 @@ def build_cache(tag: str, split: str, n_signal: int, n_background: int,
     Xp.parent.mkdir(parents=True, exist_ok=True)
     print(f"building cache '{tag}' from {split}/ ...", flush=True)
     X, F, y, group = load_split(split, n_signal, n_background, n_particles, skip_files,
-                                extra=extra)
+                                extra=extra, rich=rich)
     np.save(Xp, X)
     np.save(Fp, F)
     np.save(yp, y)
     np.save(gp, group)
     meta = dict(tag=tag, version=CACHE_VERSION, split=split, n_signal=n_signal,
-                n_background=n_background, n_particles=n_particles, n_features=N_FEATURES,
+                n_background=n_background, n_particles=n_particles,
+                n_features=X.shape[2], particle_channels=effective_particle_channels(rich),
                 event_features=effective_event_features(extra), skip_files=skip_files,
                 n_events=int(len(X)), n_pos=int(y.sum()), n_neg=int((1 - y).sum()))
     mp.write_text(json.dumps(meta, indent=2))
@@ -453,6 +508,8 @@ def main():
     ap.add_argument("--n-particles", type=int, default=N_PARTICLES)
     ap.add_argument("--skip-files", type=int, default=0,
                     help="skip the first N parquet fragments per process (disjoint samples)")
+    ap.add_argument("--rich-particles", action="store_true",
+                    help="feed phi the 11 canonical channels instead of the cached 5")
     ap.add_argument("--extra-features", action="store_true",
                     help="append EXTRA_FEATURES (the tt-focused ones) to the event vector")
     ap.add_argument("--fit-extra-norm", action="store_true",
@@ -468,7 +525,7 @@ def main():
     if not a.tag:
         ap.error("--tag is required unless --fit-event-norm is given")
     build_cache(a.tag, a.split, a.n_signal, a.n_background, a.n_particles, a.skip_files,
-                a.force, a.extra_features)
+                a.force, a.extra_features, a.rich_particles)
 
 
 if __name__ == "__main__":

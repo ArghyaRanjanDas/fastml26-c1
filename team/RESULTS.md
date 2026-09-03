@@ -416,11 +416,75 @@ as what it is worth. Multiply-accumulates per event, at φ 32-16-8 / ρ 32-16:
 | ρ, +8 from max-pooling | 1,392 | +256; the max itself is comparators, no DSP |
 | 16×16 ΔR table (isolation) | ~512 mults | cos Δφ = c_i c_j + s_i s_j from inputs already there |
 
-| run | change | φ cost | params | AUC (eval) | vs tt | vs QCD | vs W+jets |
-|---|---|---|---|---|---|---|---|
-| `c2_base_cpu` | control: 11 event features, 5 channels/candidate | — | 2,057 | 0.88397 | 0.7514 | 0.9292 | 0.9712 |
-| `c2_rich` | + 6 teacher per-candidate channels (φ sees 11) | +24% φ MACs | 2,249 | 0.89758 | 0.7886 | 0.9328 | 0.9713 |
-| `c2_rich_mm` | + those channels AND max-pool | +24% φ MACs | 2,521 | 0.89879 | 0.7913 | 0.9327 | 0.9724 |
+| run | change | φ MACs | params | AUC (eval) | vs tt | vs QCD | vs W+jets | eff@99% |
+|---|---|---|---|---|---|---|---|---|
+| `c2_base_cpu` | control: 11 event features, 5 channels/candidate | 12,800 | 2,057 | 0.88397 | 0.7514 | 0.9292 | 0.9712 | 0.1737 |
+| `c2_meanmax` | + max-pool alongside mean | 12,800 | 2,329 | 0.88451 | 0.7510 | 0.9306 | 0.9720 | 0.1747 |
+| `c2_pair4` | + 24 leading-4 pair scalars (ln ΔR / kT / z / m²) | 12,800 | 2,825 | 0.88785 | 0.7646 | 0.9280 | 0.9709 | 0.1793 |
+| `c2_rich` | + 6 teacher per-candidate channels (φ sees 11) | 15,872 | 2,249 | 0.89758 | 0.7886 | 0.9328 | 0.9713 | 0.1988 |
+| `c2_rich_mm` | + those channels AND max-pool | 15,872 | 2,521 | 0.89879 | 0.7913 | 0.9327 | 0.9724 | 0.2017 |
+| `c2_canon` | **canonical set**: 11 channels + max-pool + 8 event features | 15,872 | 2,777 | 0.90099 | 0.7961 | 0.9339 | 0.9729 | 0.2163 |
+| *(reference)* `ds_big_s0` teacher, 72k params, 2M events | — | — | 72,717 | 0.91515 | 0.8261 | 0.9436 | 0.9757 | 0.2717 |
+
+Max-pooling on its own is worth +0.0005. The 24 pair scalars are worth +0.013 vs tt.
+The 6 per-candidate channels are worth **+0.037 vs tt**, and the three together
+(`c2_canon`) are **+0.045 vs tt and +0.017 overall over the control**, taking signal
+efficiency at 99% background rejection from 0.174 to 0.216. That is 2,777 parameters
+and 300k training events reaching 0.796 vs tt, against 0.826 for a 72k-parameter
+teacher trained on 2M — most of the teacher's advantage was its inputs, not its size.
+
+### The canonical student input set — tensor layout for c1
+
+`data.py` now builds it behind two flags. Nothing changes by default: a cache built
+without them is byte-identical to before.
+
+```bash
+python data.py --tag train1M_c2  --split train --n-signal 1000000 --n-background 1000000 \
+       --rich-particles --extra-features
+python data.py --tag eval100k_c2 --split eval  --n-signal  100000 --n-background  100000 \
+       --rich-particles --extra-features
+python train.py --model deepset_plus --phi 32,16,8 --rho 32,16 --pool meanmax \
+       --pool-norm --event-scale 0.2 --epochs 25 \
+       --train-tag train1M_c2 --eval-tag eval100k_c2 --tag <name>
+```
+`train.py` needs no change: it takes the per-candidate width from `Xtr.shape[2]` and
+the event width from `Ftr.shape[1]`. `--pool meanmax` is the pooling you already added.
+
+**X — `(N, 16, 11)` float32.** Channels 0-4 are exactly what they were; 5-10 are new.
+Order matters to anything reading an export:
+
+| ch | name | value |
+|---|---|---|
+| 0 | `log_pt` | log1p(pt) / 8 |
+| 1 | `eta` | η / 4 |
+| 2 | `dxy` | clip(dxy, ±2) / 2 |
+| 3 | `cos_phi` | cos φ |
+| 4 | `sin_phi` | sin φ |
+| 5 | `lnz` | ln(pt / HT) / 4 |
+| 6 | `lnE` | log1p(pt cosh η) / 8 |
+| 7 | `cos_dphi_lead` | cos(φ − φ₁) |
+| 8 | `sin_dphi_lead` | sin(φ − φ₁) |
+| 9 | `deta_lead` | (η − η₁) / 2 |
+| 10 | `abs_dxy` | |dxy| / 2 |
+
+Channels 5-10 are the teacher's, in the teacher's order, and match
+`teacher/common.py:particle_features(rich=True)` to 2e-7 — so teacher and student
+consume the identical tensor and the published soft targets stay valid.
+
+**F — `(N, 19)` float32.** The 11 incumbent event features unchanged, then:
+
+| idx | name | value |
+|---|---|---|
+| 11 | `iso_lead_pt` | log1p(pT of the most isolated pT>10 candidate), standardized |
+| 12 | `n_iso` | number of pT>10 candidates with cone-pT/pT < 0.15, standardized |
+| 13-18 | `p12_lndRc` … `p34_lndRc` | ½ln(Δη² + 2(1−cosΔφ)) for the 6 pairs among the leading 4 |
+
+All eight are standardized with frozen constants in `data.EXTRA_STANDARDIZE`
+(re-measure with `python data.py --fit-extra-norm`). The pair distance uses
+`2(1−cosΔφ)` rather than `Δφ²` deliberately: it needs no atan2 and no 2π wrap in
+firmware, and it measures the same (+0.0158 vs +0.0156 AUC vs tt). Full firmware
+costing of every one of these — formula, cost class, fixed-point rewrite — is in
+`team/fpga/FEATURES.md`.
 
 ## What to take, and what to leave
 
@@ -441,14 +505,15 @@ the same information, and **ln z is worth nothing at all** (−0.000).
   (already summed), ln E needs cosh η, Δφ/Δη are differences against the leading
   candidate, |dxy| is an absolute value. The catch is that they widen φ, the block
   the FPGA lane already has at 91% of an SLR — so take them *and* pay for them by
-  narrowing φ or dropping to 8 candidates (rows `c2_rich_narrow` / `c2_rich_8p`,
+  narrowing φ or dropping to 8 candidates (rows `c2_canon_narrow` / `c2_canon_8p`,
   both cheaper than today's baseline).
 * **Max-pooling alongside mean — take it.** Comparators, no DSP, +8 inputs to ρ.
 * **`iso_lead_pt` (and `n_iso`, free once the ΔR table exists) — take them.** One
   event-level scalar is worth more against tt (+0.024) than all 24 leading-4 pair
   numbers together (+0.016), and it goes in after the pool where there is room.
-* **Pair quantities — take ln ΔR of the leading-4 pairs, if anything.** 6 scalars,
-  +0.016. Adding ln kT and ln m² on top buys +0.000 (they are the same information
+* **Pair quantities — take ln ΔR of the leading-4 pairs.** 6 scalars, +0.016 in the
+  proxy and +0.013 vs tt in the real student. Adding ln kT and ln m² on top buys
+  +0.000 (they are the same information
   in different coordinates); ln z buys nothing anywhere.
 * **A full pairwise block — no.** Pooling all 120 pairs into mean/min/max/std keeps
   only +0.009 of the +0.023 that the explicit leading-6 pairs give, so the value is
