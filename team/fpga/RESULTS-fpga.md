@@ -109,3 +109,16 @@ DSP is now the binding resource (89 %); the distributed-arithmetic (da4ml) varia
 levers for the next student. The derived channels are computed once per candidate in a preprocessing
 block (formulas and firmware cost classes in `team/fpga/FEATURES.md`); that block is **not** included in
 these numbers yet. Summaries: `reports/sum_rich_*.json`.
+
+## Per-background AUC of the synthesized designs (closure sample, 5,000 events: 2,486 HH / 850 QCD / 808 tt / 856 W+jets)
+
+Background labels recovered by matching the sample rows to `team/cache/eval100k` (100 % matched); `synth.py`
+prints these whenever the sample carries a `group` array (0 QCD, 1 HH, 2 tt, 3 W+jets).
+
+| design | AUC all (keras → HLS) | vs QCD (keras → HLS) | vs tt (keras → HLS) | vs W+jets (keras → HLS) |
+|---|---|---|---|---|
+| model_2041 @ ap_fixed<22,10> wrap | 0.8847 → 0.8830 | 0.9267 → 0.9242 | 0.7499 → 0.7521 | 0.9702 → 0.9658 |
+| model_2041 @ `tsat_16_6` | 0.8847 → 0.8815 | 0.9267 → 0.9207 | 0.7499 → 0.7533 | 0.9702 → 0.9635 |
+| **model_2777_rich @ `tsat_16_6`** | 0.9077 → **0.9062** | 0.9349 → **0.9356** | 0.8085 → **0.8074** | 0.9743 → **0.9703** |
+
+Fixed point costs ≤ 0.006 on any background; the tt gain of the rich student (+0.055) survives quantization intact.
