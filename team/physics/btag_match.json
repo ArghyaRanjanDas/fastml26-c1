@@ -1,0 +1,67 @@
+{
+ "HH_4b": {
+  "jets_per_event": 4.578,
+  "btag_jets": 2.9396,
+  "btagphys_jets": 0.9408,
+  "frac_cand_in_any_jet": 0.697375,
+  "frac_cand_btag_matched": 0.4992875,
+  "frac_cand_btagphys_matched": 0.1425875,
+  "frac_cand_electron": 0.0166625,
+  "frac_cand_muon": 0.0194375,
+  "frac_cand_photon": 0.1644,
+  "frac_cand_charged_had": 0.415125,
+  "frac_cand_neutral": 0.384375
+ },
+ "tt0123j_5f_ckm_LO_MLM_hadronic": {
+  "jets_per_event": 5.6808,
+  "btag_jets": 2.7324,
+  "btagphys_jets": 1.1754,
+  "frac_cand_in_any_jet": 0.77845,
+  "frac_cand_btag_matched": 0.419625,
+  "frac_cand_btagphys_matched": 0.1618375,
+  "frac_cand_electron": 0.0103625,
+  "frac_cand_muon": 0.0114,
+  "frac_cand_photon": 0.17485,
+  "frac_cand_charged_had": 0.463425,
+  "frac_cand_neutral": 0.3399625
+ },
+ "tt0123j_5f_ckm_LO_MLM_semiLeptonic": {
+  "jets_per_event": 5.191,
+  "btag_jets": 2.4364,
+  "btagphys_jets": 1.0954,
+  "frac_cand_in_any_jet": 0.7293,
+  "frac_cand_btag_matched": 0.3950625,
+  "frac_cand_btagphys_matched": 0.153975,
+  "frac_cand_electron": 0.0285,
+  "frac_cand_muon": 0.032425,
+  "frac_cand_photon": 0.17005,
+  "frac_cand_charged_had": 0.4158375,
+  "frac_cand_neutral": 0.3531875
+ },
+ "QCD_HT250toInf": {
+  "jets_per_event": 3.6558,
+  "btag_jets": 0.9962,
+  "btagphys_jets": 0.7574,
+  "frac_cand_in_any_jet": 0.6878875,
+  "frac_cand_btag_matched": 0.2011125,
+  "frac_cand_btagphys_matched": 0.1444,
+  "frac_cand_electron": 0.0021125,
+  "frac_cand_muon": 0.0024,
+  "frac_cand_photon": 0.17065,
+  "frac_cand_charged_had": 0.41175,
+  "frac_cand_neutral": 0.4130875
+ },
+ "WJetsToLNu_13TeV-madgraphMLM-pythia8": {
+  "jets_per_event": 1.4654,
+  "btag_jets": 0.3288,
+  "btagphys_jets": 0.2926,
+  "frac_cand_in_any_jet": 0.163125,
+  "frac_cand_btag_matched": 0.0401875,
+  "frac_cand_btagphys_matched": 0.032325,
+  "frac_cand_electron": 0.0152375,
+  "frac_cand_muon": 0.0160375,
+  "frac_cand_photon": 0.1114625,
+  "frac_cand_charged_had": 0.198625,
+  "frac_cand_neutral": 0.6586375
+ }
+}
