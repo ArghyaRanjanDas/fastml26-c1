@@ -59,10 +59,12 @@ for b in 3e-6 1e-5 3e-5 1e-4 3e-4; do
   KERAS_BACKEND=torch ../../../venv/bin/python train_attn.py \
       --tag q_b2_b$b --quantized --init-from a_d16_b2 --beta0 $b --beta-ramp 5 \
       --train-tag train1M --epochs 40 --lr 1e-3 > logs_q_b2_b$b.log 2>&1
-  python - <<PY
-import json; s=json.load(open("runs/q_b2_b$b_summary.json"))
-print("$b", "AUC", round(s["eval_auc"],5), "EBOPs", round(s.get("ebops",float("nan"))),
-      "vs tt", round(s["per_background_auc"]["tt"],4))
+  ../../../venv/bin/python - "$b" <<'PY'
+import json, sys
+b = sys.argv[1]
+s = json.load(open(f"runs/q_b2_b{b}_summary.json"))
+print(b, "AUC", round(s["eval_auc"], 5), "EBOPs", round(s.get("ebops", float("nan"))),
+      "vs tt", round(s["per_background_auc"]["tt"], 4))
 PY
 done
 git add -A runs && git commit -m "c3-1: QAT beta sweep on A100" && git push
