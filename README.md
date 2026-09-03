@@ -19,7 +19,7 @@ Log in with your university/institution or CERN credentials if applicable.
 You should see something like this screen when setting up your server after you log in:
 <img width="627" height="803" alt="image" src="https://github.com/user-attachments/assets/7858dfaa-1a88-455b-9a25-cfef7bd2471b" />
 
-For training your networks/looking at the data, we recommend using the **NRP Deep Learning & Data Science Full, PyTorch** or **NRP Deep Learning & Data Science Full, Tensorflow** images. 
+We recommend using the **NRP Deep Learning & Data Science Full, PyTorch** or **NRP Deep Learning & Data Science Full, Tensorflow** images. 
 
 Each participant should select the following resources per person:
 * GPUs: 1
@@ -34,7 +34,7 @@ If your team wants to do a dedicated longer training **one person can use all of
 
 Be sure to shut down everyone else's servers. Please do not request more than this, or your server will likely not start at all.
 
-For hls4ml/FPGA workflows/resource estimates and model quantization, we recommend the **FPGA** image. When using the FPGA image you should request the following:
+If you want to go crazy and actually try to deploy on an FPGA, use the FPGA image:
 * GPUs: 0
 * Cores: 4
 * RAM: 50
@@ -93,14 +93,19 @@ pip install -e emg2pose/
 pip install h5py==3.11.0 hydra-core==1.3.2 omegaconf joblib==1.4.2 tqdm
 ```
 
-For FPGA/hls4ml/quantization resources on FPGA image servers, we recommend getting started with the [hls4ml tutorials](https://github.com/fastmachinelearning/hls4ml-tutorial/tree/main), namely 1_getting_started and 2_quantization. From a FPGA server on the JupyterHub, the following is needed to use those tutorials (pytorch version as an example, it would be different for tensorflow):
+For FPGA/hls4ml/quantization resources we recommend getting started with the [hls4ml tutorials](https://github.com/fastmachinelearning/hls4ml-tutorial/tree/main), namely 1_getting_started and 2_quantization. **You can add this on to the PyTorch/Tensorflow server you are using.** The following (maybe more) is needed to use those tutorials:
 
 ```bash
 #hls4ml tutorial intro notebooks
 git clone https://github.com/fastmachinelearning/hls4ml-tutorial.git
 
-#pytorch/brevitas dependencies
-pip install numpy scikit-learn pandas matplotlib pydot torch hls4ml brevitas qonnx onnx
+conda env create -f environment.yml -p ~/envs/hls4ml-tutorial
+source ~/.bashrc
+conda activate ~/envs/hls4ml-tutorial
+python -m ipykernel install --user --name hls4ml-tutorial --display-name "hls4ml-tutorial"
+
+#Source the vitis/vivado license:
+source /tools/Xilinx/Vivado/2023.1/settings64.sh
 
 #if get XILINX_VITIS path error, add this to top of cell 2:
 import os
