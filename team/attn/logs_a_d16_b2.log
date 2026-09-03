@@ -1,0 +1,10 @@
+a_d16_b2: 5,233 keras params | 5,233 synthesized weights | cfg={'n_particles': 16, 'n_channels': 11, 'n_event': 11, 'd': 16, 'heads': 1, 'blocks': 2, 'mlp_ratio': 2, 'head_dim': 16, 'pool': 'meanmax', 'residual': True} | quantized=False
+  epoch   1  loss=1.8446  val_auc=0.88834  *
+  epoch   2  loss=1.7845  val_auc=0.89703  *
+  epoch   3  loss=1.7726  val_auc=0.90127  *
+  epoch   4  loss=1.7665  val_auc=0.90324  *
+  epoch   5  loss=1.7620  val_auc=0.90518  *
+  epoch   6  loss=1.7582  val_auc=0.90622  *
+  epoch   7  loss=1.7555  val_auc=0.90742  *
+  epoch   8  loss=1.7535  val_auc=0.90789  *
+  epoch   9  loss=1.7521  val_auc=0.90889  *

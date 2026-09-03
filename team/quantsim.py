@@ -20,6 +20,8 @@ ap.add_argument("--weights", required=True)
 ap.add_argument("--sample", required=True)
 ap.add_argument("--bits", nargs="+", default=["16,6", "18,8", "22,10", "28,12"])
 ap.add_argument("--overflow", default="wrap", choices=["wrap", "sat"])
+ap.add_argument("--round", dest="rounding", default="trn", choices=["trn", "rnd"],
+                help="AP_TRN (truncate, hls4ml default) or AP_RND (round to nearest)")
 ap.add_argument("--per-layer", action="store_true",
                 help="give each tensor its own integer-bit count sized to its measured "
                      "range, at fixed total width (hls4ml granularity='name')")
@@ -35,11 +37,11 @@ F = npz["F"].astype(np.float64) if spec["n_event_features"] else None
 y, ref = npz["y"], npz["scores"].astype(np.float64)
 
 
-def q(v, W, I, mode):
-    """Quantize to ap_fixed<W,I>: step 2^(I-W), truncation, wrap or saturate."""
+def q(v, W, I, mode, rounding="trn"):
+    """Quantize to ap_fixed<W,I>: step 2^(I-W), TRN/RND, wrap or saturate."""
     step = 2.0 ** (I - W)
     lo, hi = -(2.0 ** (I - 1)), 2.0 ** (I - 1) - step
-    v = np.floor(v / step) * step                      # AP_TRN
+    v = (np.floor(v / step + 0.5) if rounding == "rnd" else np.floor(v / step)) * step
     if mode == "sat":
         return np.clip(v, lo, hi)
     span = 2.0 ** I                                    # AP_WRAP
@@ -52,25 +54,29 @@ def ibits(v, headroom=1):
     return max(2, int(np.ceil(np.log2(m + 1e-12))) + 1 + headroom)
 
 
-def run(W, I, mode, per_layer=False):
+def run(W, I, mode, per_layer=False, rounding="trn"):
     II = (lambda v: ibits(v)) if per_layer else (lambda v: I)
-    h = q(X, W, II(X), mode)
+    qq = lambda v, i: q(v, W, i, mode, rounding)
+    h = qq(X, II(X))
     for i, (Wt, b) in enumerate(mats):
         if i == n_phi:
-            h = q(h.mean(axis=1), W, II(h), mode)
+            pooled = (np.concatenate([h.mean(axis=1), h.max(axis=1)], axis=1)
+                      if spec.get("pool") == "meanmax" else h.mean(axis=1))
+            h = qq(pooled, II(pooled))
             if F is not None:
-                h = np.concatenate([h, q(F, W, II(F), mode)], axis=1)
-        z = h @ q(Wt, W, II(Wt), mode) + q(b, W, II(b), mode)
-        z = q(z, W, II(z), mode)
+                h = np.concatenate([h, qq(F, II(F))], axis=1)
+        z = h @ qq(Wt, II(Wt)) + qq(b, II(b))
+        z = qq(z, II(z))
         h = np.maximum(z, 0.0) if i < len(mats) - 1 else z
     return 1.0 / (1.0 + np.exp(-h.ravel()))
 
 
-print(f"{a.json}   float AUC = {roc_auc_score(y, ref):.5f}   (overflow mode: {a.overflow})\n")
+print(f"{a.json}   float AUC = {roc_auc_score(y, ref):.5f}   "
+      f"(AP_{a.rounding.upper()}, AP_{'SAT' if a.overflow=='sat' else 'WRAP'})\n")
 print(f"{'precision':<18} {'range':>12} {'AUC':>9} {'loss':>9}")
 print("-" * 52)
 base = roc_auc_score(y, ref)
 for spec_s in a.bits:
     W, I = (int(v) for v in spec_s.split(","))
-    auc = roc_auc_score(y, run(W, I, a.overflow, a.per_layer))
+    auc = roc_auc_score(y, run(W, I, a.overflow, a.per_layer, a.rounding))
     print(f"ap_fixed<{W},{I}>{'':<6} {'+-' + str(2**(I-1)):>12} {auc:>9.5f} {auc - base:>+9.5f}")

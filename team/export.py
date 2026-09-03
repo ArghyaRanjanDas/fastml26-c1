@@ -27,6 +27,7 @@ import torch
 from data import (EVENT_FEATURES, EVENT_STANDARDIZE, EVENT_TRANSFORM, EVENT_CLIP,
                   PT_LOG_SCALE, ETA_SCALE, DXY_CLIP, load_cache)
 from equalize import equalize
+import input_spec
 from models import DeepSetPlus, count_params
 
 HERE = Path(__file__).resolve().parent
@@ -69,13 +70,28 @@ def fold(model: DeepSetPlus) -> DeepSetPlus:
     return flat
 
 
-def build_from_summary(summary: dict) -> DeepSetPlus:
+def build_from_summary(summary: dict, sd: dict | None = None) -> DeepSetPlus:
+    """Rebuild the trained model.
+
+    Widths are read off the checkpoint when one is given rather than assumed:
+    the per-candidate channel count and the event-feature count both changed
+    when c2's rich inputs landed, and older summaries do not record them.
+    """
+    phi_dims, rho_dims = tuple(summary["phi"]), tuple(summary["rho"])
+    pool = summary.get("pool", "mean")
+    n_feat = summary.get("n_features", 5)
+    n_evt = summary.get("n_event_features", len(EVENT_FEATURES))
+    if sd is not None:
+        n_feat = sd["phi.0.weight"].shape[1]
+        pooled = phi_dims[-1] * (2 if pool == "meanmax" else 1)
+        n_evt = (sd["rho.0.weight"].shape[1] - pooled
+                 if summary["use_event_features"] else n_evt)
     return DeepSetPlus(
-        n_features=5, n_event_features=len(EVENT_FEATURES),
-        phi_dims=tuple(summary["phi"]), rho_dims=tuple(summary["rho"]),
+        n_features=n_feat, n_event_features=n_evt,
+        phi_dims=phi_dims, rho_dims=rho_dims,
         dropout=summary["dropout"], use_event_features=summary["use_event_features"],
         event_scale=summary.get("event_scale", 1.0), pool_norm=summary.get("pool_norm", False),
-        pool=summary.get("pool", "mean"),
+        pool=pool,
     )
 
 
@@ -83,6 +99,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True, help="run tag under team/runs/")
     ap.add_argument("--eval-tag", default="eval100k")
+    ap.add_argument("--cache-meta", default=None,
+                    help="cache tag whose meta.json holds the extra-feature constants "
+                         "(defaults to --eval-tag)")
     ap.add_argument("--n-sample", type=int, default=5000)
     ap.add_argument("--name", default=None,
                     help="override the export stem (default model_<params>); use when two "
@@ -100,8 +119,9 @@ def main():
     args = ap.parse_args()
 
     summary = json.loads((RUNS / f"{args.run}_summary.json").read_text())
-    model = build_from_summary(summary)
-    model.load_state_dict(torch.load(RUNS / f"{args.run}_best.pt", map_location="cpu"))
+    sd_in = torch.load(RUNS / f"{args.run}_best.pt", map_location="cpu")
+    model = build_from_summary(summary, sd_in)
+    model.load_state_dict(sd_in)
     model.eval()
 
     flat = fold(model).eval()
@@ -110,7 +130,7 @@ def main():
     use_evt = summary["use_event_features"]
 
     # ------------------------------------------------- data + closure check
-    X, F, y, g, _ = load_cache(args.eval_tag)
+    X, F, y, g, cache_meta = load_cache(args.eval_tag)
     rng = np.random.default_rng(args.seed)
     idx = rng.choice(len(X), size=min(args.n_sample, len(X)), replace=False)
     Xs, Fs, ys = X[idx][:, :npart], F[idx], y[idx]
@@ -146,27 +166,33 @@ def main():
         # --- keys required by team/fpga/README.md -------------------------
         phi=list(summary["phi"]),
         rho=list(summary["rho"]),
-        n_features=5,
+        n_features=int(X.shape[2]),
         n_particles=npart,
-        n_event_features=len(EVENT_FEATURES) if use_evt else 0,
+        n_event_features=int(F.shape[1]) if use_evt else 0,
         # --- everything else needed to reproduce the model exactly --------
         run=args.run,
         params=n_params,
         eval_auc=summary["eval_auc"],
         architecture=dict(
             phi_activation="relu", rho_activation="relu", output_activation="sigmoid",
-            pooling="mean (GlobalAveragePooling1D over particles)",
+            pooling=("mean+max concatenated (GlobalAveragePooling1D + GlobalMaxPooling1D)"
+                     if summary.get("pool") == "meanmax"
+                     else "mean (GlobalAveragePooling1D over particles)"),
             event_features_concat="after pooling" if use_evt else None,
             batchnorm="folded into the first rho Linear; none to synthesize",
-            equalized=not args.no_equalize,
+            equalized=args.equalize,
             equalization="per-channel cross-layer scaling (ReLU positive homogeneity); "
                          "function-preserving, keeps weights/activations inside ap_fixed range",
             layer_order=keys,
         ),
-        particle_features=["log1p(pt)/8", "eta/4", "clip(dxy,+-2)/2", "cos(phi)", "sin(phi)"],
+        particle_features=[f for f, _ in
+                           [(c, None) for c in cache_meta.get(
+                               "particle_channels",
+                               ["log_pt", "eta", "dxy", "cos_phi", "sin_phi"])]],
         particle_norm=dict(pt_log_scale=PT_LOG_SCALE, eta_scale=ETA_SCALE, dxy_clip=DXY_CLIP),
         particle_ordering="leading n_particles candidates by descending pT",
-        event_feature_names=list(EVENT_FEATURES) if use_evt else [],
+        event_feature_names=(list(cache_meta.get("event_features", EVENT_FEATURES))
+                             if use_evt else []),
         event_feature_norm=(
             {n: dict(transform=EVENT_TRANSFORM[n], mean=EVENT_STANDARDIZE[n][0],
                      std=EVENT_STANDARDIZE[n][1]) for n in EVENT_FEATURES}
@@ -174,6 +200,13 @@ def main():
         event_feature_clip=EVENT_CLIP if use_evt else None,
         event_features_computed_from_n_candidates=16 if use_evt else None,
         fold_check_max_abs_diff=max_diff,
+        particle_channels=list(cache_meta.get(
+            "particle_channels", ["log_pt", "eta", "dxy", "cos_phi", "sin_phi"])),
+        pool=summary.get("pool", "mean"),
+        input_spec=input_spec.build(
+            npart, list(cache_meta.get("event_features", EVENT_FEATURES)) if use_evt else [],
+            json.loads((Path(__file__).resolve().parent / "cache" /
+                        (args.cache_meta or args.eval_tag) / "meta.json").read_text())),
     )
     (EXPORT / f"{stem}.json").write_text(json.dumps(spec, indent=2))
 

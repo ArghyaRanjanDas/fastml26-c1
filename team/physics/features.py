@@ -226,6 +226,16 @@ def compute_raw(pt, eta, phi, dxy, mask) -> dict:
     f["ptw_dxy"] = (pt * adxy).sum(1) / ht_safe
     f["max_pt_dxy"] = (pt * adxy).max(1)
     f["dxy_lead4"] = adxy[:, :4].sum(1)
+    # Order statistics of |dxy|: HH->4b has four b hadrons, tt has two, and a sum
+    # cannot tell "few, very displaced" from "many, mildly displaced" -- the 2nd
+    # to 4th largest can.  The baseline already carries the 1st (max_abs_dxy) and
+    # the sum.  In firmware this is a comparator network: no DSP at all.
+    dxy_sorted = np.sort(adxy, axis=1)[:, ::-1]
+    for k in range(4):
+        f[f"dxy_ord{k+1}"] = dxy_sorted[:, k]
+    # and the one that says "were there four of them": the 4th largest over the
+    # largest, i.e. how evenly the displacement is shared
+    f["dxy_ord4_frac"] = dxy_sorted[:, 3] / np.maximum(dxy_sorted[:, 0], 1e-6)
 
     # ---- global shape -------------------------------------------------------
     f["m6"] = _mass(px[:, :6].sum(1), py[:, :6].sum(1), pz[:, :6].sum(1), E[:, :6].sum(1))
@@ -341,6 +351,8 @@ TRANSFORM = {
     "mt_lep_mpt": "log1p",
     "n_dxy_p05": "linear", "n_dxy_p20": "linear", "ptw_dxy": "linear",
     "max_pt_dxy": "log1p", "dxy_lead4": "linear",
+    "dxy_ord1": "linear", "dxy_ord2": "linear", "dxy_ord3": "linear",
+    "dxy_ord4": "linear", "dxy_ord4_frac": "linear",
     "m6": "log1p", "m8": "log1p", "m16": "log1p", "ht4_frac": "linear",
     "pt_ratio_41": "linear", "centrality": "linear", "eta_spread": "linear",
     "sphericity_T": "linear",
@@ -376,6 +388,9 @@ COST = {
     "mt_lep_mpt": "pairwise",
     "n_dxy_p05": "event", "n_dxy_p20": "event", "ptw_dxy": "event",
     "max_pt_dxy": "event", "dxy_lead4": "event",
+    # a sorting network over 16 values: comparators only, zero DSP
+    "dxy_ord1": "event", "dxy_ord2": "event", "dxy_ord3": "event",
+    "dxy_ord4": "event", "dxy_ord4_frac": "event",
     "m6": "event", "m8": "event", "m16": "event", "ht4_frac": "event",
     "pt_ratio_41": "event", "centrality": "event", "eta_spread": "event",
     "sphericity_T": "event",

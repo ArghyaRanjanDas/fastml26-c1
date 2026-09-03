@@ -150,6 +150,53 @@ python verify_export.py --json export/model_2041.json \
 
 ---
 
+# Round 3 — distillation, c2's rich inputs, and the deployable student
+
+## Distillation (task 1)
+
+Teacher trained here: `teacher_1M`, φ128-64-32 / ρ256-128-64, mean+max pool, 71,905 params,
+40 epochs on 2M events — **eval AUC 0.89950** (tt 0.78927). Students are the deployable
+φ32-16-8 / ρ32-16 shape. Binary KD: soft target `sigmoid(z_t/T)`, student scored at `z_s/T`,
+KD term scaled by `T²`, mixed with hard BCE at weight `alpha`. Teacher logits are cached once,
+so distillation costs the same per epoch as ordinary training.
+
+| student | teacher | T | alpha | params | AUC (eval) | AUC vs tt |
+|---|---|---|---|---|---|---|
+| from scratch (`B1e_16p_1M`) | — | — | — | 2,057 | 0.88687 | 0.75869 |
+| `kd_T2_a07` | teacher_1M (0.8995) | 2 | 0.7 | 2,057 | **0.88997** | 0.76740 |
+| `kd_T3_a07` | teacher_1M (0.8995) | 3 | 0.7 | 2,057 | 0.88876 | 0.76398 |
+
+**Distillation is worth +0.0031** at identical cost (0.88687 → 0.88997), and +0.0087 against tt.
+T=2 beat T=3. The sweep was cut short at two points — the team soft targets landed and
+superseded it, and the box became CPU-contended.
+
+## c2's rich inputs — the big win
+
+Taking exactly what c2's study priced as worth its cost (`make_student_cache.py`):
+per-candidate X 5 → **11 channels** (+ ln(pt/HT), ln E, cos/sin Δφ_lead, Δη_lead, |dxy|),
+**mean+max pooling**, and F 11 → **19 event features** (+ `iso_lead_pt`, `n_iso`, and ln ΔR of
+the 6 leading-4 pairs). Deliberately skipped: ln kT / ln m² / ln z pair quantities and any full
+pairwise block — c2 measured those as redundant or worthless.
+
+| run | inputs | teacher | T | alpha | params | φ MACs | **AUC (eval)** | AUC vs tt |
+|---|---|---|---|---|---|---|---|---|
+| `B1e_16p_1M` | 5ch / 11 evt | — | — | — | 2,057 | 12,800 | 0.88687 | 0.75869 |
+| `rich_16p` | **11ch / 19 evt** | — | — | — | 2,777 | 15,872 | 0.90638 | 0.80822 |
+| `rkd_T3_a07` | 11ch / 19 evt | ds_big_s0 (0.91515) | 3 | 0.7 | 2,777 | 15,872 | 0.90689 | 0.80752 |
+| `rkd_T2_a09` | 11ch / 19 evt | ds_big_s0 | 2 | 0.9 | 2,777 | 15,872 | 0.90779 | 0.80913 |
+| `rkd_T2_a07` | 11ch / 19 evt | ds_big_s0 | 2 | 0.7 | 2,777 | 15,872 | 0.90787 | 0.80960 |
+| **`rkd_T2_a05`** | 11ch / 19 evt | ds_big_s0 | 2 | 0.5 | 2,777 | 15,872 | **0.90901** | **0.81188** |
+
+**+0.0221 overall and +0.053 against tt, for +720 parameters and +24% φ MACs.** c2's predicted
++0.0136 overall / +0.037 vs tt was, if anything, conservative. Distillation on top of the rich
+inputs adds a further +0.0026, and lower alpha is better here (0.5 > 0.7 > 0.9) — with strong
+inputs the hard labels still carry information the teacher's soft targets do not.
+
+Exported as `export/model_2777_rich.{pt,json}` + `eval_sample_rich.npz`, with a full
+`input_spec` in the json giving every derived channel's formula and frozen constant.
+
+---
+
 # Confirmation run at 1M + 1M events
 
 Same config as `B1e_16p`, trained on `train1M` (1M signal + 1M background, same even

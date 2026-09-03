@@ -74,6 +74,8 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--pool", default="mean", choices=["mean", "sum", "meanmax"])
+    ap.add_argument("--gpu-batches", action="store_true")
     args = ap.parse_args()
 
     if bool(args.teacher) == bool(args.soft_targets):
@@ -89,7 +91,15 @@ def main():
     if args.soft_targets:
         d = Path(args.soft_targets)
         tmeta = json.loads((d / "soft_targets_meta.json").read_text())
-        zt_tr = np.load(d / f"soft_targets_{args.train_tag}.npy").astype(np.float32).ravel()
+        # A derived cache (train1M_s) keeps its parent's row order, so the parent's
+        # soft targets apply unchanged; fall back to derived_from when there is no
+        # file for the derived tag itself.
+        st = d / f"soft_targets_{args.train_tag}.npy"
+        if not st.exists() and meta_tr.get("derived_from"):
+            st = d / f"soft_targets_{meta_tr['derived_from']}.npy"
+            print(f"  no targets for '{args.train_tag}'; using its parent "
+                  f"'{meta_tr['derived_from']}' (same row order)")
+        zt_tr = np.load(st).astype(np.float32).ravel()
         if len(zt_tr) != len(Xtr):
             raise SystemExit(f"soft targets have {len(zt_tr):,} rows but cache "
                              f"'{args.train_tag}' has {len(Xtr):,} -- wrong cache or stale targets")
@@ -118,9 +128,10 @@ def main():
     use_evt = not args.no_event_features
     npart = args.n_particles_use
     student = DeepSetPlus(
-        n_features=5, n_event_features=len(EVENT_FEATURES),
+        n_features=Xtr.shape[2], n_event_features=Ftr.shape[1],
         phi_dims=dims(args.phi), rho_dims=dims(args.rho), dropout=0.0,
         use_event_features=use_evt, event_scale=args.event_scale, pool_norm=True,
+        pool=args.pool,
     ).to(device)
     n_params = count_params(student)
     print(f"student: {n_params:,} params, phi={args.phi} rho={args.rho} "
@@ -131,12 +142,29 @@ def main():
     n_val = int(len(perm) * args.val_frac)
     val_idx, tr_idx = perm[:n_val], perm[n_val:]
 
-    ds = torch.utils.data.TensorDataset(
-        torch.from_numpy(Xtr[tr_idx][:, :npart]), torch.from_numpy(Ftr[tr_idx]),
-        torch.from_numpy(ytr[tr_idx]), torch.from_numpy(zt_tr[tr_idx]))
-    loader = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=True,
-                                         num_workers=4, pin_memory=True, drop_last=True,
-                                         persistent_workers=True)
+    tX = torch.from_numpy(Xtr[tr_idx][:, :npart]); tF = torch.from_numpy(Ftr[tr_idx])
+    tY = torch.from_numpy(ytr[tr_idx]); tZ = torch.from_numpy(zt_tr[tr_idx])
+    if args.gpu_batches:
+        # The box is shared with the CPU lane; GPU-resident batching keeps the
+        # cores free and is ~5 s/epoch here against ~9 s (or worse under load).
+        gX, gF, gy, gz = tX.to(device), tF.to(device), tY.to(device), tZ.to(device)
+        n_train, bs = len(gX), args.batch_size
+        steps = n_train // bs
+
+        def batches():
+            perm = torch.randperm(n_train, device=device)
+            for si in range(steps):
+                i = perm[si * bs:(si + 1) * bs]
+                yield gX[i], gF[i], gy[i], gz[i]
+    else:
+        loader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(tX, tF, tY, tZ), batch_size=args.batch_size,
+            shuffle=True, num_workers=4, pin_memory=True, drop_last=True,
+            persistent_workers=True)
+        steps = len(loader)
+
+        def batches():
+            return loader
     Xva_t = torch.from_numpy(Xtr[val_idx][:, :npart])
     Fva_t = torch.from_numpy(Ftr[val_idx])
     yva, gva = ytr[val_idx], gtr[val_idx]
@@ -144,7 +172,7 @@ def main():
 
     opt = torch.optim.AdamW(student.parameters(), lr=args.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-        opt, T_max=args.epochs * len(loader), eta_min=args.lr * 1e-3)
+        opt, T_max=args.epochs * steps, eta_min=args.lr * 1e-3)
     hard = nn.BCEWithLogitsLoss()
 
     ckpt = OUT_DIR / f"{args.tag}_best.pt"
@@ -152,7 +180,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         student.train()
         t0, tot, seen = time.perf_counter(), 0.0, 0
-        for xb, fb, yb, zb in loader:
+        for xb, fb, yb, zb in batches():
             xb, fb = xb.to(device, non_blocking=True), fb.to(device, non_blocking=True)
             yb, zb = yb.to(device, non_blocking=True), zb.to(device, non_blocking=True)
             opt.zero_grad(set_to_none=True)
@@ -189,7 +217,7 @@ def main():
                    teacher_auc=teacher_auc, teacher_source="soft_targets" if args.soft_targets else "local",
                    temperature=T, alpha=alpha, phi=list(dims(args.phi)), rho=list(dims(args.rho)),
                    dropout=0.0, use_event_features=use_evt, event_scale=args.event_scale,
-                   pool_norm=True, pool="mean", params=n_params, phi_macs=phi_macs,
+                   pool_norm=True, pool=args.pool, params=n_params, phi_macs=phi_macs,
                    n_particles=npart, n_particles_use=npart, eval_auc=eval_auc,
                    val_auc=float(best), per_background_auc=per_group, signal_eff=eff,
                    epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
