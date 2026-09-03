@@ -28,10 +28,13 @@ def main():
         per_cache[tag] = stack.mean(0).astype(np.float32)
 
     Xev, Fev, yev, gev, _ = load_cache(args.eval_tag)
-    members = {}
+    members, n_params, label_smoothing = {}, 0, None
     for r in args.runs:
         a, att = quick_auc(np.load(RUNS / r / f"logits_{args.eval_tag}.npy"), yev, gev)
-        members[r] = dict(eval_auc=a, eval_auc_tt=att)
+        ms = json.loads((RUNS / r / "summary.json").read_text())
+        members[r] = dict(eval_auc=a, eval_auc_tt=att, model=ms["model"], params=ms["params"])
+        n_params += ms["params"]
+        label_smoothing = ms["args"]["label_smoothing"]
         print(f"  {r:<24s} eval AUC {a:.5f}  vs tt {att:.5f}")
     auc, pg, eff = auc_report(per_cache[args.eval_tag], yev, gev, f"ensemble of {len(args.runs)} ({name})")
 
@@ -39,15 +42,19 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     for tag, logits in per_cache.items():
         np.save(out / f"logits_{tag}.npy", logits)
-    summary = dict(run=name, model="ensemble", members=members, eval_auc=auc, eval_per_group=pg, eval_eff=eff)
+    summary = dict(run=name, model="ensemble", params=n_params, members=members,
+                   eval_auc=auc, eval_per_group=pg, eval_eff=eff)
     write_json(out / "summary.json", summary)
     if args.publish:
         for tag, logits in per_cache.items():
             np.save(HERE / f"soft_targets_{tag}.npy", logits)
         write_json(HERE / "soft_targets_meta.json",
-                   dict(source_run=name, model="ensemble (mean of member logits)", members=members,
-                        eval_auc=auc, eval_per_group=pg,
-                        format="float32 teacher logits, one per cache row, same order as team/cache/<tag>/X.npy"))
+                   dict(source_run=name, model="ensemble (mean of member logits)",
+                        params=n_params, n_members=len(args.runs), members=members,
+                        eval_auc=auc, eval_per_group=pg, eval_eff=eff,
+                        label_smoothing=label_smoothing,
+                        format="float32 teacher logits, one per cache row, same order as team/cache/<tag>/X.npy",
+                        usage="student score = sigmoid(logit); for KD at temperature T use sigmoid(logit / T)"))
         print(f"  published -> {HERE}/soft_targets_*.npy")
 
 

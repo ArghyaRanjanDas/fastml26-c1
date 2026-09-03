@@ -191,15 +191,96 @@ python verify_export.py --json export/model_2041.json \
 
 # Teacher lane (Purdue AF A100, agent `hh4b`) — soft targets for distillation
 
-Unconstrained teachers trained on `train1M` (1M + 1M, 10 % held out for model selection),
-evaluated on the same `eval100k` slice as every row above. Inputs are *exactly* the
-student's cache tensors; the teacher derives extra per-candidate and pairwise quantities
-from them on the fly (`team/teacher/common.py`). Soft targets = float32 logits in cache
-row order: `team/teacher/soft_targets_{train1M,train300k,eval100k}.npy`
-(`soft_targets_meta.json` says which run they come from). Training: AdamW, warm-up + cosine,
-label smoothing 0.05, bf16, EMA of weights; the run is selected on validation AUC.
+Unconstrained teachers, trained on `train1M` (1M signal + 1M background, 10 % held out for
+checkpoint selection) and evaluated on the same `eval100k` slice as every row above, with the
+same AUC definitions as `team/train.py` (AUC vs a background group = signal vs that group only).
 
-| run | model | params | train events | epochs | **AUC (eval)** | vs QCD | vs tt | vs W+jets | eff@99 % rej | train-slice AUC | notes |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| `B1e_16p_1M` (student, for reference) | DeepSet φ32-16-8 ρ32-16 + evt | 2,057 | 2M | 25 | 0.88687 | 0.93027 | 0.75869 | 0.97163 | — | — | the distillation target shape |
-| **`ds_big_s0`** | BigDeepSet φ128-64-32, mean+max, ρ256-128-64, rich feats | 72,717 | 2M | 40 (best 23) | **0.91515** | 0.94363 | **0.82612** | 0.97569 | 0.272 | 0.92046 | **first soft targets (pushed)**. +0.028 overall, +0.067 vs tt over the student. Train/val gap 0.005 → in-sample logits are fine as targets. |
+Both teachers see **exactly the student's inputs** — the cache tensors `X` (16 candidates × 5
+features) and `F` (11 event features). Nothing outside them is used; the teacher only derives
+extra quantities from them on the fly (`team/teacher/common.py`), so the logits are valid soft
+targets for a student that consumes those same tensors.
+
+Training: AdamW, 2-epoch warm-up then cosine, label smoothing 0.05, bf16 autocast, EMA of
+weights and BatchNorm buffers, gradient clipping at 1.0, batch 2048.
+
+| run | model | params | epochs (best) | **AUC (eval)** | vs QCD | **vs tt** | vs W+jets | eff@99 % rej | eff@99.9 % rej |
+|---|---|---|---|---|---|---|---|---|---|
+| `B1e_16p_1M` *(student, for reference)* | DeepSet φ32-16-8 ρ32-16 + evt | 2,057 | 25 | 0.88687 | 0.93027 | 0.75869 | 0.97163 | — | — |
+| `ds_big_s0` | BigDeepSet φ128-64-32, mean+max, ρ256-128-64 | 72,717 | 40 (23) | 0.91515 | 0.94363 | 0.82612 | 0.97569 | 0.2717 | 0.0747 |
+| `part_s0` | ParT-lite d128, 4 blocks × 8 heads | 1,334,013 | 50 (19) | 0.92392 | 0.94543 | 0.85042 | 0.97591 | 0.3182 | 0.0926 |
+| `part_s1` | ParT-lite, seed 1 | 1,334,013 | 50 (18) | 0.92385 | 0.94553 | 0.85022 | 0.97580 | 0.3108 | 0.0903 |
+| `part_e25_s2` | ParT-lite, 25 ep, dropout 0.15 | 1,334,013 | 25 (18) | 0.92364 | 0.94542 | 0.84985 | 0.97566 | 0.3163 | 0.0954 |
+| `part_e25_d20_s3` | ParT-lite, 25 ep, dropout 0.2, wd 0.1 | 1,334,013 | 25 (23) | 0.92358 | 0.94523 | 0.85007 | 0.97545 | 0.3124 | 0.0897 |
+| `ens_part2` | mean logit of `part_s0` + `part_s1` | 2,668,026 | — | 0.92450 | 0.94604 | 0.85130 | 0.97615 | 0.3171 | 0.0951 |
+| `ens_part4_ds` | the 4 ParT seeds **+ `ds_big_s0`** | 5,408,769 | — | 0.92468 | 0.94713 | 0.85010 | 0.97681 | 0.3195 | 0.0982 |
+| **`ens_part4`** ← **published** | mean logit of the 4 ParT-lite seeds | 5,336,052 | — | **0.92480** | 0.94636 | **0.85181** | 0.97622 | 0.3186 | 0.1013 |
+
+**Headline: the teacher is +0.0379 AUC overall and +0.0931 vs tt over the student it will teach**
+(0.92480 vs 0.88687; 0.85181 vs 0.75869). Almost all of the headroom distillation can transfer is
+against tt — the background the student is worst at — which is exactly where round 3 wanted it.
+
+## What the sweep says
+
+**1. ParT-lite beats the big DeepSet by +0.0097, and by +0.0243 vs tt** (0.92392 vs 0.91515;
+0.85042 vs 0.82612). The pairwise (ΔR, ln kT, ln z, ln m²) attention bias is doing real work: a
+DeepSet sees candidates independently and only ever pools them, so it cannot represent the
+two-body mass structure that separates HH→4b (two ~125 GeV pairs) from tt̄ (a 80 GeV W plus a
+173 GeV top). The bias hands that structure to the attention directly.
+
+**2. The ParT-lite configuration is saturated.** Four runs spanning seeds, 25 vs 50 epochs, dropout
+0.1–0.2 and weight decay 0.05–0.1 span **0.00034 AUC** (0.92358–0.92392). Neither a shorter cosine
+schedule matched to the peak epoch nor heavier regularization beat the default, so the remaining
+gap to a perfect teacher is not a tuning problem at this width.
+
+**3. Ensembling is worth +0.0009**, two seeds giving +0.0006 and four +0.0009 over the best single
+seed — a normal, small, real gain for averaged logits.
+
+**4. Adding the DeepSet to the ensemble hurts the headline number.** `ens_part4_ds` gains vs QCD
+(+0.0008) and vs W+jets (+0.0006) but loses vs tt (−0.0017), netting −0.0001 overall. The DeepSet
+is 0.0087 weaker and its errors against tt are not decorrelated enough to pay for that. **So the
+published targets are the 4 ParT seeds only**; the DeepSet targets are kept beside them as
+`soft_targets_*_dsbig.npy` for anyone who wants to compare or blend.
+
+## The soft targets
+
+| file | rows | content |
+|---|---|---|
+| `team/teacher/soft_targets_train1M.npy` | 2,000,000 | float32 `ens_part4` logits, `team/cache/train1M` row order |
+| `team/teacher/soft_targets_train300k.npy` | 599,999 | same, `train300k` |
+| `team/teacher/soft_targets_eval100k.npy` | 200,000 | same, `eval100k` |
+| `team/teacher/soft_targets_*_dsbig.npy` | same | the `ds_big_s0` DeepSet logits, for comparison |
+| `team/teacher/soft_targets_meta.json` | — | source run, members, params, eval AUCs, usage note |
+
+Teacher AUC **on the files themselves**: 0.93040 on `train1M`, 0.93111 on `train300k`, 0.92480 on
+`eval100k` (the train caches read higher because 90 % of their rows are in-sample; see below).
+
+**Two things c1 needs when consuming these.**
+
+*Use the logits, not probabilities.* Student score = `sigmoid(logit)`; for KD at temperature T use
+`sigmoid(logit / T)`. The teacher trained with **label smoothing 0.05**, so its probabilities
+saturate near 0.975 / 0.025 rather than 1 / 0 — the targets are already softened before any T.
+
+*The in-sample rows are safe to use.* Each teacher trained on 90 % of `train1M`, so most soft
+targets are in-sample. Measured, not assumed: the teacher's AUC on rows it trained on is only
+**+0.0057** above rows it did not (0.93044 vs 0.92477 for `part_s0`), and its confidence is
+**identical** on both (mean |logit| 1.996 in-sample vs 1.995 held-out). It is not memorizing, so
+cross-fitting the targets is unnecessary and the full-cache logits can be used directly.
+
+## Not done
+
+- **A 32-candidate privileged teacher** (the optional item) is not possible on this pod: the raw
+  parquet dataset is not mounted here, and the caches contain 16 candidates only.
+- **Bigger and deeper ParT variants** (d192 × 6 blocks, 8 blocks, and a tt-upweighted run) were
+  launched and cut at 5–11 of 30 epochs when the shared A100 was handed back. They were tracking
+  the baseline, not beating it (val AUC 0.9213 at epoch 5 vs 0.9248 final), and finding 3 above
+  says the configuration is saturated anyway.
+
+## Reproduce
+
+```bash
+cd team/teacher
+PY=/work/users/das214/fastml26/venv/bin/python
+$PY train_teacher.py --model part --tag part_s0 --epochs 50 --ema 0.999 --compile --seed 0
+$PY train_teacher.py --model part --tag part_s1 --epochs 50 --ema 0.999 --compile --seed 1
+$PY ensemble.py --runs part_s0 part_s1 part_e25_s2 part_e25_d20_s3 --name ens_part4 --publish
+```

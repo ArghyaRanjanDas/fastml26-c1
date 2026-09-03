@@ -1,8 +1,7 @@
 {
-  "source_run": "ens_part4",
-  "model": "ensemble (mean of member logits)",
+  "run": "ens_part4",
+  "model": "ensemble",
   "params": 5336052,
-  "n_members": 4,
   "members": {
     "part_s0": {
       "eval_auc": 0.92392311235,
@@ -38,8 +37,5 @@
   "eval_eff": {
     "0.99": 0.31864,
     "0.999": 0.10126
-  },
-  "label_smoothing": 0.05,
-  "format": "float32 teacher logits, one per cache row, same order as team/cache/<tag>/X.npy",
-  "usage": "student score = sigmoid(logit); for KD at temperature T use sigmoid(logit / T)"
+  }
 }

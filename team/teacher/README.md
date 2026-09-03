@@ -10,10 +10,14 @@ soft targets for the student.
 
 | file | content |
 |---|---|
-| `soft_targets_train1M.npy` | float32 teacher logits, one per row of `team/cache/train1M`, same order |
+| `soft_targets_train1M.npy` | float32 teacher logits, one per row of `team/cache/train1M`, same order (2,000,000) |
 | `soft_targets_train300k.npy` | same for `train300k` (599,999 rows) |
 | `soft_targets_eval100k.npy` | same for `eval100k` (200,000 rows) |
-| `soft_targets_meta.json` | which run produced them, its eval AUCs, label smoothing used |
+| `soft_targets_*_dsbig.npy` | the `ds_big_s0` BigDeepSet logits, kept for comparison |
+| `soft_targets_meta.json` | source run, members, params, eval AUCs, label smoothing, usage note |
+
+Published teacher: **`ens_part4`**, the mean logit of four ParT-lite seeds —
+eval AUC **0.92480**, vs tt **0.85181** (the student it teaches: 0.88687 / 0.75869).
 
 Student score = `sigmoid(logit)`; for KD at temperature T use `sigmoid(logit / T)`.
 The teacher was trained with label smoothing 0.05, so its probabilities saturate around
@@ -33,9 +37,9 @@ The teacher was trained with label smoothing 0.05, so its probabilities saturate
 
 ```bash
 PY=/work/users/das214/fastml26/venv/bin/python
-$PY train_teacher.py --model deepset --tag ds_big_s0 --epochs 40 --lr 2e-3 --wd 0.01 --ema 0.999 --publish
-$PY train_teacher.py --model part --tag part_s0 --epochs 50 --ema 0.999 --compile
-$PY ensemble.py --runs part_s0 part_s1 part_s2 --publish
+$PY train_teacher.py --model deepset --tag ds_big_s0 --epochs 40 --lr 2e-3 --wd 0.01 --ema 0.999
+$PY train_teacher.py --model part --tag part_s0 --epochs 50 --ema 0.999 --compile --seed 0
+$PY ensemble.py --runs part_s0 part_s1 part_e25_s2 part_e25_d20_s3 --name ens_part4 --publish
 ```
 
 ## Results
