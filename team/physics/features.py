@@ -174,12 +174,32 @@ def compute_raw(pt, eta, phi, dxy, mask) -> dict:
         iso = np.where(mask, iso_sum / np.maximum(pt, 1e-6), 1e9)
     hard = mask & (pt > 10.0)
     iso_h = np.where(hard, iso, 1e9)
-    best = np.argmin(iso_h, axis=1)
     rows = np.arange(N)
+    best = np.argmin(iso_h, axis=1)
     has_hard = hard.any(1)
     f["iso_min"] = np.where(has_hard, np.minimum(iso_h[rows, best], 10.0), 10.0)
     f["iso_lead_pt"] = np.where(has_hard, pt[rows, best], 0.0)
     f["n_iso"] = (hard & (iso < 0.15)).sum(1).astype(np.float64)
+    # Cheaper variants: only the leading 4 candidates may *be* the isolated one,
+    # though the cone still sums over all 16.  That is 4x16 = 64 Delta-R
+    # evaluations instead of 16x16 = 256, and the lepton in a leptonic tt is
+    # almost always among the hardest few.  Whether the 4x saving costs anything
+    # is measured, not assumed.
+    hard4 = np.zeros_like(hard)
+    hard4[:, :4] = hard[:, :4]
+    iso_4 = np.where(hard4, iso, 1e9)
+    best4 = np.argmin(iso_4, axis=1)
+    has4 = hard4.any(1)
+    f["iso_lead_pt_s4"] = np.where(has4, pt[rows, best4], 0.0)
+    f["n_iso_s4"] = (hard4 & (iso < 0.15)).sum(1).astype(np.float64)
+    f["iso_min_s4"] = np.where(has4, np.minimum(iso_4[rows, best4], 10.0), 10.0)
+    hard8 = np.zeros_like(hard)
+    hard8[:, :8] = hard[:, :8]
+    iso_8 = np.where(hard8, iso, 1e9)
+    best8 = np.argmin(iso_8, axis=1)
+    has8 = hard8.any(1)
+    f["iso_lead_pt_s8"] = np.where(has8, pt[rows, best8], 0.0)
+    f["n_iso_s8"] = (hard8 & (iso < 0.15)).sum(1).astype(np.float64)
     # transverse mass of (most isolated hard candidate, missing pT): the leptonic
     # W in tt piles up under 80 GeV, HH->4b has no such object.
     lpt, lphi = f["iso_lead_pt"], np.where(has_hard, phi[rows, best], 0.0)
@@ -283,6 +303,8 @@ TRANSFORM = {
     "mpt": "log1p", "mpt_over_ht": "linear", "mpt_sig": "log1p",
     "min_dphi_mpt": "linear",
     "iso_min": "linear", "iso_lead_pt": "log1p", "n_iso": "linear",
+    "iso_lead_pt_s4": "log1p", "n_iso_s4": "linear", "iso_min_s4": "linear",
+    "iso_lead_pt_s8": "log1p", "n_iso_s8": "linear",
     "mt_lep_mpt": "log1p",
     "n_dxy_p05": "linear", "n_dxy_p20": "linear", "ptw_dxy": "linear",
     "max_pt_dxy": "log1p", "dxy_lead4": "linear",
@@ -313,6 +335,8 @@ TRANSFORM = {
 COST = {
     "mpt": "event", "mpt_over_ht": "event", "mpt_sig": "event", "min_dphi_mpt": "event",
     "iso_min": "pairwise", "iso_lead_pt": "pairwise", "n_iso": "pairwise",
+    "iso_lead_pt_s4": "pairwise/4", "n_iso_s4": "pairwise/4", "iso_min_s4": "pairwise/4",
+    "iso_lead_pt_s8": "pairwise/2", "n_iso_s8": "pairwise/2",
     "mt_lep_mpt": "pairwise",
     "n_dxy_p05": "event", "n_dxy_p20": "event", "ptw_dxy": "event",
     "max_pt_dxy": "event", "dxy_lead4": "event",

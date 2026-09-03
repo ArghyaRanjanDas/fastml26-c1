@@ -47,8 +47,14 @@ def get_features(tag: str):
     if npy.exists() and js.exists():
         names = json.loads(js.read_text())
         P = np.load(npy)
-        if len(P) == len(X):
+        # also compare against the feature set features.py produces *now*, so a
+        # cache written before a feature was added is rebuilt instead of silently
+        # shadowing it
+        current = list(ft.compute(X[:4]))
+        if len(P) == len(X) and names == current:
             return names, P, F, y, g
+        print(f"  physics cache for '{tag}' is stale ({len(names)} -> {len(current)} "
+              f"features); recomputing", flush=True)
     t0 = time.perf_counter()
     names, P = ft.compute_chunked(X, verbose=True)
     print(f"  computed {P.shape} physics features in {time.perf_counter() - t0:.1f}s", flush=True)

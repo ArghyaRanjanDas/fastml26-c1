@@ -19,14 +19,39 @@ def cost(name):
     return COST.get(name.replace("[base] ", ""), "event")
 
 
+START = "<!-- c2:tt-study:start -->"
+END = "<!-- c2:tt-study:end -->"
+
+
 def load(name):
     p = HERE / name
     return json.loads(p.read_text()) if p.exists() else None
 
 
+RUNS = HERE.parent / "runs"
+
+STUDENTS = [
+    ("c2_base_cpu", "control: 11 event features, 5 channels/candidate", "—"),
+    ("c2_meanmax", "+ max-pool alongside mean", "comparators, no DSP"),
+    ("c2_pair4", "+ 24 leading-4 pair scalars (ln ΔR / kT / z / m²)", "24 event scalars"),
+    ("c2_rich", "+ 6 teacher per-candidate channels (φ sees 11)", "+24% φ MACs"),
+    ("c2_rich_mm", "+ those channels AND max-pool", "+24% φ MACs"),
+    ("c2_ttfeat", "+ c2's 3 tt features", "see above"),
+]
+
+
+def run_row(tag):
+    p = RUNS / f"{tag}_summary.json"
+    if not p.exists():
+        return None
+    d = json.loads(p.read_text())
+    return d
+
+
 def main():
     s1, s2, s3, tt = load("stage1_alone.json"), load("stage2_marginal.json"), \
         load("stage3_greedy.json"), load("ttmodes.json")
+    s4 = load("stage4_derived.json")
     out = []
     A = out.append
 
@@ -118,7 +143,59 @@ def main():
               f"{h['d_tt']:+.4f} | {h['auc_all']:.4f} | {h['d_all']:+.4f} |")
         A("")
 
-    print("\n".join(out))
+    if s4:
+        b = s4["baseline"]
+        A("## Stage 4 — the teacher's derived quantities, priced\n")
+        A("`team/teacher/common.py` gives the teacher two blocks the student does not have:")
+        A("6 derived quantities per candidate (`rich`), and ParT's 4 quantities per *pair*.")
+        A("First, a correction worth having on the record: **the teacher that produced the")
+        A("published soft targets (`ds_big_s0`, 0.9151 overall / 0.8261 vs tt) uses no pairwise")
+        A("features at all.** It is `BigDeepSet(rich=True)` — per-candidate channels, mean+max")
+        A("pooling, 72k parameters, 40 epochs on 2M events. `pair_features()` belongs to")
+        A("`ParTLite`, and no ParT run has been published. So the 0.826 − 0.759 gap is not yet")
+        A("evidence about relational information.\n")
+        A("Same GBDT protocol as stage 2, one row per *family* of columns:\n")
+        A(f"**Baseline (11 event features): AUC vs tt {b['auc_tt']:.4f}, overall {b['auc_all']:.4f}.**\n")
+        A("| + family | cols | cost for the student | AUC vs tt | Δ vs tt | AUC overall | Δ overall |")
+        A("|---|---|---|---|---|---|---|")
+        for r in s4["rows"]:
+            A(f"| `{r['family']}` | {r['n_cols']} | {r['cost']} | {r['auc_tt']:.4f} | "
+              f"{r['d_tt']:+.4f} | {r['auc_all']:.4f} | {r['d_all']:+.4f} |")
+        A("")
+
+    rows = [(t, d, c, run_row(t)) for t, d, c in STUDENTS]
+    if any(r[3] for r in rows):
+        A("## Stage 5 — the same questions asked of the real 2k student\n")
+        A("The GBDT above has no particle branch, so it over-states anything φ() already")
+        A("computes. These are the actual B1e_16p architecture (φ 32-16-8, ρ 32-16, pool BN,")
+        A("event scale 0.2, 25 epochs, seed 0, `train300k`), CPU, one input change per row.\n")
+        A("| run | change | φ cost | params | AUC (eval) | vs tt | vs QCD | vs W+jets |")
+        A("|---|---|---|---|---|---|---|---|")
+        for tag, desc, cost_s, d in rows:
+            if not d:
+                continue
+            g = d["per_background_auc"]
+            A(f"| `{tag}` | {desc} | {cost_s} | {d['params']:,} | {d['eval_auc']:.5f} | "
+              f"{g['tt']:.4f} | {g['QCD']:.4f} | {g['Wjets']:.4f} |")
+        A("")
+
+    text = "\n".join(out)
+    if "--write" not in sys.argv:
+        print(text)
+        return
+
+    # Own exactly one block of RESULTS.md, delimited by markers, so regenerating
+    # never touches anyone else's rows.
+    md = HERE.parent / "RESULTS.md"
+    body = md.read_text()
+    block = f"{START}\n{text}\n{END}\n"
+    if START in body and END in body:
+        head, rest = body.split(START, 1)
+        body = head + block + rest.split(END, 1)[1].lstrip("\n")
+    else:
+        body = body.rstrip("\n") + "\n\n---\n\n" + block
+    md.write_text(body)
+    print(f"wrote {len(text.splitlines())} lines into {md}")
 
 
 if __name__ == "__main__":
