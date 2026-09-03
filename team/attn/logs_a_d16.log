@@ -17,3 +17,6 @@ a_d16: 3,073 keras params | 3,073 synthesized weights | cfg={'n_particles': 16, 
   epoch  16  loss=1.7524  val_auc=0.90846
   epoch  17  loss=1.7521  val_auc=0.90876  *
   epoch  18  loss=1.7517  val_auc=0.90892  *
+  epoch  19  loss=1.7515  val_auc=0.90901  *
+  epoch  20  loss=1.7512  val_auc=0.90905  *
+  epoch  21  loss=1.7510  val_auc=0.90922  *
