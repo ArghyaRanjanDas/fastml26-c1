@@ -7,6 +7,7 @@ to the numbers the scripts produced.  Writes to stdout; the caller appends.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +27,25 @@ END = "<!-- c2:tt-study:end -->"
 def load(name):
     p = HERE / name
     return json.loads(p.read_text()) if p.exists() else None
+
+
+def load_greedy():
+    """stage3_greedy.json, or the log if the search was stopped early on purpose."""
+    j = load("stage3_greedy.json")
+    if j:
+        return j
+    log = HERE / "greedy.log"
+    if not log.exists():
+        return None
+    pat = re.compile(r"^step (\d+): \+ (\S+)\s+tt ([\d.]+) \(([-+][\d.]+)\)\s+"
+                     r"all ([\d.]+) \(([-+][\d.]+)\)")
+    hist = []
+    for line in log.read_text().splitlines():
+        m = pat.match(line)
+        if m:
+            hist.append(dict(step=int(m[1]), added=m[2], auc_tt=float(m[3]),
+                             d_tt=float(m[4]), auc_all=float(m[5]), d_all=float(m[6])))
+    return dict(history=hist, selected=[h["added"] for h in hist], truncated=True) if hist else None
 
 
 RUNS = HERE.parent / "runs"
@@ -50,7 +70,7 @@ def run_row(tag):
 
 def main():
     s1, s2, s3, tt = load("stage1_alone.json"), load("stage2_marginal.json"), \
-        load("stage3_greedy.json"), load("ttmodes.json")
+        load_greedy(), load("ttmodes.json")
     s4 = load("stage4_derived.json")
     out = []
     A = out.append
@@ -136,6 +156,9 @@ def main():
         A("The top of stage 2 is three flavours of the same handle (an isolated hard candidate),")
         A("so ranking alone over-counts it. Forward selection, each step keeping the feature that")
         A("adds most against tt:\n")
+        if s3.get("truncated"):
+            A("<sub>Stopped after step 3: the three features it had picked are the three that")
+            A("go into `data.py`, and the CPU was better spent on the student runs below.</sub>\n")
         A("| step | added | cost | AUC vs tt | Δ | AUC overall | Δ |")
         A("|---|---|---|---|---|---|---|")
         for h in s3["history"]:
@@ -169,6 +192,18 @@ def main():
         A("The GBDT above has no particle branch, so it over-states anything φ() already")
         A("computes. These are the actual B1e_16p architecture (φ 32-16-8, ρ 32-16, pool BN,")
         A("event scale 0.2, 25 epochs, seed 0, `train300k`), CPU, one input change per row.\n")
+        A("The FPGA lane has just priced the baseline at ap_fixed<22,10>: **319k LUT / 1,724 DSP,")
+        A("91% of one SLR** on both. There is no headroom, so where a feature lands matters as much")
+        A("as what it is worth. Multiply-accumulates per event, at φ 32-16-8 / ρ 32-16:\n")
+        A("| block | MACs/event | note |")
+        A("|---|---|---|")
+        A("| φ, 5 input channels (baseline) | 12,800 | 16 × 800, replicated per candidate — the FPGA bill |")
+        A("| φ, 11 input channels (teacher `rich`) | 15,872 | **+3,072 (+24%)**, straight onto the block that is already at 91% |")
+        A("| ρ, 19 inputs (baseline) | 1,136 | once per event |")
+        A("| ρ, +24 pair scalars | 1,904 | +768, i.e. +6% of φ — after the pool, so it never replicates |")
+        A("| ρ, +8 from max-pooling | 1,392 | +256; the max itself is comparators, no DSP |")
+        A("| 16×16 ΔR table (isolation) | ~512 mults | cos Δφ = c_i c_j + s_i s_j from inputs already there |")
+        A("")
         A("| run | change | φ cost | params | AUC (eval) | vs tt | vs QCD | vs W+jets |")
         A("|---|---|---|---|---|---|---|---|")
         for tag, desc, cost_s, d in rows:

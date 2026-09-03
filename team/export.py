@@ -26,6 +26,7 @@ import torch
 
 from data import (EVENT_FEATURES, EVENT_STANDARDIZE, EVENT_TRANSFORM, EVENT_CLIP,
                   PT_LOG_SCALE, ETA_SCALE, DXY_CLIP, load_cache)
+from equalize import equalize
 from models import DeepSetPlus, count_params
 
 HERE = Path(__file__).resolve().parent
@@ -74,6 +75,7 @@ def build_from_summary(summary: dict) -> DeepSetPlus:
         phi_dims=tuple(summary["phi"]), rho_dims=tuple(summary["rho"]),
         dropout=summary["dropout"], use_event_features=summary["use_event_features"],
         event_scale=summary.get("event_scale", 1.0), pool_norm=summary.get("pool_norm", False),
+        pool=summary.get("pool", "mean"),
     )
 
 
@@ -86,6 +88,14 @@ def main():
                     help="override the export stem (default model_<params>); use when two "
                          "runs share a parameter count, e.g. the 8-particle variant")
     ap.add_argument("--sample-name", default="eval_sample.npz")
+    ap.add_argument("--equalize", action="store_true",
+                    help="cross-layer equalization. Fixes the range problem (max|W| 184 -> 9, "
+                         "max|preact| 115 -> 9) but measurably trades it for underflow: 25%% of "
+                         "rho0 weights end up below the ap_fixed<16,6> step. Off by default -- "
+                         "per-layer precision (hls4ml granularity='name') is the better lever, "
+                         "and QAT is the real fix. See quantsim.py.")
+    ap.add_argument("--equalize-events", type=int, default=4096,
+                    help="calibration events for the equalization activation ranges")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -113,6 +123,17 @@ def main():
     print(f"BatchNorm fold check: max|folded - original| = {max_diff:.3e}")
     assert max_diff < 1e-5, "fold is not exact -- refusing to export"
 
+    if args.equalize:
+        n_cal = min(args.equalize_events, len(xt))
+        print("cross-layer equalization (function-preserving, no retraining):")
+        equalize(flat, xt[:n_cal], ft[:n_cal], use_evt)
+        with torch.no_grad():
+            s_eq = torch.sigmoid(flat(xt, ft if use_evt else None)).numpy()
+        eq_diff = float(np.abs(s_eq - s_orig).max())
+        print(f"  equalization check: max|equalized - original| = {eq_diff:.3e}")
+        assert eq_diff < 1e-4, "equalization changed the function -- refusing to export"
+        s_flat, max_diff = s_eq, max(max_diff, eq_diff)
+
     sd = flat.state_dict()
     keys = [k for k in sd if k.endswith("weight")]
     print(f"exported weight keys (synth.py maps these positionally): {keys}")
@@ -137,6 +158,9 @@ def main():
             pooling="mean (GlobalAveragePooling1D over particles)",
             event_features_concat="after pooling" if use_evt else None,
             batchnorm="folded into the first rho Linear; none to synthesize",
+            equalized=not args.no_equalize,
+            equalization="per-channel cross-layer scaling (ReLU positive homogeneity); "
+                         "function-preserving, keeps weights/activations inside ap_fixed range",
             layer_order=keys,
         ),
         particle_features=["log1p(pt)/8", "eta/4", "clip(dxy,+-2)/2", "cos(phi)", "sin(phi)"],

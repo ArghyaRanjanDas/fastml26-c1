@@ -113,6 +113,7 @@ def main():
     ap.add_argument("--phi", default="64,32,16")
     ap.add_argument("--rho", default="256,128")
     ap.add_argument("--dropout", type=float, default=0.0)
+    ap.add_argument("--pool", default="mean", choices=["mean", "sum", "meanmax"])
     ap.add_argument("--n-particles-use", type=int, default=None,
                     help="feed only the leading N candidates to phi (cache stays at 16). "
                          "Halving particles halves the phi cost, which is the FPGA bill.")
@@ -174,7 +175,7 @@ def main():
         n_features=n_features, n_event_features=n_event_features,
         phi_dims=dims(args.phi), rho_dims=dims(args.rho),
         dropout=args.dropout, use_event_features=use_evt,
-        event_scale=args.event_scale, pool_norm=args.pool_norm,
+        event_scale=args.event_scale, pool_norm=args.pool_norm, pool=args.pool,
     ).to(device)
     n_params = count_params(model)
     # phi runs once per particle, so this product -- not the parameter count --
@@ -245,7 +246,7 @@ def main():
 
     summary = dict(run=run, model=args.model, phi=dims(args.phi), rho=dims(args.rho),
                    dropout=args.dropout, use_event_features=use_evt,
-                   event_scale=args.event_scale, pool_norm=args.pool_norm,
+                   event_scale=args.event_scale, pool_norm=args.pool_norm, pool=args.pool,
                    event_feature_names=list(EVENT_FEATURES) if use_evt else [],
                    params=n_params, phi_macs=phi_macs, n_particles=n_particles,
                    n_particles_use=args.n_particles_use, eval_auc=eval_auc, val_auc=float(best_auc),
