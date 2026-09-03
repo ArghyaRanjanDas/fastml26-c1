@@ -101,3 +101,47 @@ git add -A runs && git commit -m "c3-2: float capacity/length sweep on A100" && 
 
 Expected: ~40 min each, **~2.5 h total**. The seed-1 repeat of `a_d16_b2` is there to
 size the run-to-run spread, so the table above can be read honestly.
+
+---
+
+### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed
+
+On the A10 (shared with screening runs) 12 epochs of HGQ2 QAT got EBOPs 853k -> 360k
+(2.4x, which is the DSP lever) but only AUC 0.89044 — below the 0.895 bar and below the
+PTQ path's 0.906 HLS. Val AUC peaked at epoch 6 (0.89477) and then decayed under EBOPs
+pressure, so the run needs (a) best-epoch checkpointing, now in `qat_hgq.py`, and (b) many
+more epochs at low beta0 for the quantizer bitwidths to settle. Warm-start pre-QAT AUC is
+0.548, so a good fraction of training is just the bitwidths learning.
+
+Expected runtime: ~40 min per beta0 at 40 epochs on an A100 (Keras 3 / torch backend).
+**Number to beat: AUC 0.895** at EBOPs materially below 853k. Best so far: 0.89044 @ 360k EBOPs.
+
+```bash
+cd /work/users/das214/fastml26/fastml26-c1 && git pull
+../venv/bin/pip install "keras>=3.15" hgq2==0.2.0 2>/dev/null || true
+# rich caches: build once if absent (pure transform of train1M/eval100k, ~1 min)
+[ -d team/cache/train1M_s ] || ../venv/bin/python team/make_student_cache.py --tag train1M
+[ -d team/cache/eval100k_s ] || ../venv/bin/python team/make_student_cache.py --tag eval100k --norm-from train1M_s
+for b in 3e-7 1e-6 3e-6; do
+  KERAS_BACKEND=torch ../venv/bin/python team/hgq/qat_hgq.py \
+    --beta0 $b --tag "a100_b$b" --epochs 40 --lr 5e-4 2>&1 | tail -25
+done
+```
+
+---
+
+### c1-2 — best student on train4M when c2's cache lands
+
+The 2,041-param student gained +0.0031 going from 600k to 2M events, which is about what
+the entire rho sweep was worth and costs nothing in hardware. The rich student has not been
+retrained at larger scale at all.
+
+Expected runtime: ~25 min (30 epochs, GPU-resident batching). **Number to beat: 0.90901.**
+
+```bash
+cd /work/users/das214/fastml26/fastml26-c1 && git pull
+../venv/bin/python team/make_student_cache.py --tag train4M
+../venv/bin/python team/distill.py --soft-targets team/teacher --tag c1_rich_4M \
+  --temperature 2 --alpha 0.5 --phi 32,16,8 --rho 32,16 --pool meanmax \
+  --gpu-batches --epochs 30 --train-tag train4M_s --eval-tag eval100k_s
+```

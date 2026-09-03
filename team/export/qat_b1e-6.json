@@ -1,0 +1,33 @@
+{
+  "tag": "b1e-6",
+  "beta0": 1e-06,
+  "eval_auc": 0.89044450235,
+  "ebops": 360278.0,
+  "phi": [
+    32,
+    16,
+    8
+  ],
+  "rho": [
+    32,
+    16
+  ],
+  "n_particles": 16,
+  "n_features": 11,
+  "n_event_features": 19,
+  "pool": "meanmax",
+  "init_from": "model_2777_rich.pt",
+  "temperature": 2.0,
+  "alpha": 0.5,
+  "epochs": 12,
+  "quant": {
+    "place_all": "SAT_SYM",
+    "datalane": "WRAP",
+    "enable_ebops": true
+  },
+  "convert": {
+    "strategy": "distributed_arithmetic",
+    "reuse_factor": 1,
+    "note": "no manual precision -- HGQ2 carries per-layer bitwidths"
+  }
+}

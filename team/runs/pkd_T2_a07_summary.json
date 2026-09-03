@@ -1,0 +1,366 @@
+{
+  "run": "pkd_T2_a07",
+  "model": "deepset_plus",
+  "distilled_from": "ens_part4",
+  "teacher_auc": 0.9247970527,
+  "teacher_source": "soft_targets",
+  "temperature": 2.0,
+  "alpha": 0.7,
+  "phi": [
+    32,
+    16,
+    8
+  ],
+  "rho": [
+    32,
+    16
+  ],
+  "dropout": 0.0,
+  "use_event_features": true,
+  "event_scale": 0.2,
+  "pool_norm": true,
+  "pool": "meanmax",
+  "params": 2777,
+  "phi_macs": 12800,
+  "n_particles": 16,
+  "n_particles_use": 16,
+  "eval_auc": 0.90870416355,
+  "val_auc": 0.9091997412084601,
+  "per_background_auc": {
+    "QCD": 0.9387596714967149,
+    "tt": 0.813665961809618,
+    "Wjets": 0.9736849079018419
+  },
+  "signal_eff": {
+    "0.99": 0.2408,
+    "0.999": 0.06662
+  },
+  "epochs": 30,
+  "batch_size": 1024,
+  "lr": 0.002,
+  "train_meta": {
+    "tag": "train1M_s",
+    "version": 2,
+    "split": "train",
+    "n_signal": 1000000,
+    "n_background": 1000000,
+    "n_particles": 16,
+    "n_features": 11,
+    "event_features": [
+      "ht",
+      "lead_pt1",
+      "lead_pt2",
+      "lead_pt3",
+      "lead_pt4",
+      "n_cand",
+      "sum_abs_dxy",
+      "max_abs_dxy",
+      "mean_abs_dxy",
+      "m2",
+      "m4",
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndR",
+      "p13_lndR",
+      "p14_lndR",
+      "p23_lndR",
+      "p24_lndR",
+      "p34_lndR"
+    ],
+    "skip_files": 0,
+    "n_events": 2000000,
+    "n_pos": 1000000,
+    "n_neg": 1000000,
+    "derived_from": "train1M",
+    "particle_channels": [
+      "log_pt",
+      "eta",
+      "dxy",
+      "cos_phi",
+      "sin_phi",
+      "lnz",
+      "lnE",
+      "cos_dphi_lead",
+      "sin_dphi_lead",
+      "deta_lead",
+      "abs_dxy"
+    ],
+    "extra_event_features": [
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndR",
+      "p13_lndR",
+      "p14_lndR",
+      "p23_lndR",
+      "p24_lndR",
+      "p34_lndR"
+    ],
+    "extra_transform": {
+      "iso_lead_pt": "log1p",
+      "n_iso": "linear"
+    },
+    "extra_standardize": {
+      "mean": [
+        3.026947259902954,
+        1.9260774850845337,
+        -0.11914470791816711,
+        -0.0016936459578573704,
+        0.0858539268374443,
+        -0.02027125656604767,
+        0.05629239231348038,
+        0.07816465198993683
+      ],
+      "std": [
+        0.7088603377342224,
+        1.4960964918136597,
+        1.8568891286849976,
+        1.7611557245254517,
+        1.6804176568984985,
+        1.7464011907577515,
+        1.6767572164535522,
+        1.645761251449585
+      ]
+    }
+  },
+  "eval_meta": {
+    "tag": "eval100k_s",
+    "version": 2,
+    "split": "eval",
+    "n_signal": 100000,
+    "n_background": 100000,
+    "n_particles": 16,
+    "n_features": 11,
+    "event_features": [
+      "ht",
+      "lead_pt1",
+      "lead_pt2",
+      "lead_pt3",
+      "lead_pt4",
+      "n_cand",
+      "sum_abs_dxy",
+      "max_abs_dxy",
+      "mean_abs_dxy",
+      "m2",
+      "m4",
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndR",
+      "p13_lndR",
+      "p14_lndR",
+      "p23_lndR",
+      "p24_lndR",
+      "p34_lndR"
+    ],
+    "skip_files": 0,
+    "n_events": 200000,
+    "n_pos": 100000,
+    "n_neg": 100000,
+    "derived_from": "eval100k",
+    "particle_channels": [
+      "log_pt",
+      "eta",
+      "dxy",
+      "cos_phi",
+      "sin_phi",
+      "lnz",
+      "lnE",
+      "cos_dphi_lead",
+      "sin_dphi_lead",
+      "deta_lead",
+      "abs_dxy"
+    ],
+    "extra_event_features": [
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndR",
+      "p13_lndR",
+      "p14_lndR",
+      "p23_lndR",
+      "p24_lndR",
+      "p34_lndR"
+    ],
+    "extra_transform": {
+      "iso_lead_pt": "log1p",
+      "n_iso": "linear"
+    },
+    "extra_standardize": {
+      "mean": [
+        3.026947259902954,
+        1.9260774850845337,
+        -0.11914470791816711,
+        -0.0016936459578573704,
+        0.0858539268374443,
+        -0.02027125656604767,
+        0.05629239231348038,
+        0.07816465198993683
+      ],
+      "std": [
+        0.7088603377342224,
+        1.4960964918136597,
+        1.8568891286849976,
+        1.7611557245254517,
+        1.6804176568984985,
+        1.7464011907577515,
+        1.6767572164535522,
+        1.645761251449585
+      ]
+    }
+  },
+  "timing": {
+    "gpu_batched_us_per_event": 0.15138606386244646,
+    "gpu_batch_size": 8192,
+    "cpu_single_event_us": 18873.657362535596
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 1.7903648956838356,
+      "val_auc": 0.8955834472665942
+    },
+    {
+      "epoch": 2,
+      "loss": 1.7534335333987536,
+      "val_auc": 0.899810251558801
+    },
+    {
+      "epoch": 3,
+      "loss": 1.748102403731935,
+      "val_auc": 0.892157576062064
+    },
+    {
+      "epoch": 4,
+      "loss": 1.7451478933568834,
+      "val_auc": 0.8999744415290205
+    },
+    {
+      "epoch": 5,
+      "loss": 1.7428158150522561,
+      "val_auc": 0.897920495521298
+    },
+    {
+      "epoch": 6,
+      "loss": 1.7408087375697319,
+      "val_auc": 0.9039528530842198
+    },
+    {
+      "epoch": 7,
+      "loss": 1.7392264392203611,
+      "val_auc": 0.9011068021167918
+    },
+    {
+      "epoch": 8,
+      "loss": 1.738148226477439,
+      "val_auc": 0.9050598556416466
+    },
+    {
+      "epoch": 9,
+      "loss": 1.7371001149960792,
+      "val_auc": 0.9062499854124538
+    },
+    {
+      "epoch": 10,
+      "loss": 1.7361495203095263,
+      "val_auc": 0.9061622717845419
+    },
+    {
+      "epoch": 11,
+      "loss": 1.7352042611376697,
+      "val_auc": 0.9061866778618701
+    },
+    {
+      "epoch": 12,
+      "loss": 1.7343372414582958,
+      "val_auc": 0.9070886698197413
+    },
+    {
+      "epoch": 13,
+      "loss": 1.7336599007206472,
+      "val_auc": 0.9062280097428261
+    },
+    {
+      "epoch": 14,
+      "loss": 1.7330790226881518,
+      "val_auc": 0.9061573123688286
+    },
+    {
+      "epoch": 15,
+      "loss": 1.7325478569648451,
+      "val_auc": 0.9063398533971916
+    },
+    {
+      "epoch": 16,
+      "loss": 1.7319813438213612,
+      "val_auc": 0.9069868151470251
+    },
+    {
+      "epoch": 17,
+      "loss": 1.731804470413438,
+      "val_auc": 0.9058546017097201
+    },
+    {
+      "epoch": 18,
+      "loss": 1.7313949974952398,
+      "val_auc": 0.9083799552610503
+    },
+    {
+      "epoch": 19,
+      "loss": 1.7311264350459057,
+      "val_auc": 0.9084060396936962
+    },
+    {
+      "epoch": 20,
+      "loss": 1.7308538338645454,
+      "val_auc": 0.9085790122917426
+    },
+    {
+      "epoch": 21,
+      "loss": 1.7305577936400456,
+      "val_auc": 0.9089524918750752
+    },
+    {
+      "epoch": 22,
+      "loss": 1.7303534939537417,
+      "val_auc": 0.9087396230506217
+    },
+    {
+      "epoch": 23,
+      "loss": 1.7301662430955933,
+      "val_auc": 0.9089930947037211
+    },
+    {
+      "epoch": 24,
+      "loss": 1.7300330928325924,
+      "val_auc": 0.908928649449533
+    },
+    {
+      "epoch": 25,
+      "loss": 1.729837657649475,
+      "val_auc": 0.9090230794487248
+    },
+    {
+      "epoch": 26,
+      "loss": 1.7297210227920714,
+      "val_auc": 0.9089487469132096
+    },
+    {
+      "epoch": 27,
+      "loss": 1.729639845472476,
+      "val_auc": 0.9091692435118311
+    },
+    {
+      "epoch": 28,
+      "loss": 1.7295718290077127,
+      "val_auc": 0.9091997412084601
+    },
+    {
+      "epoch": 29,
+      "loss": 1.7294961700537155,
+      "val_auc": 0.9091743050778682
+    },
+    {
+      "epoch": 30,
+      "loss": 1.7294895866070543,
+      "val_auc": 0.9091844212599203
+    }
+  ]
+}

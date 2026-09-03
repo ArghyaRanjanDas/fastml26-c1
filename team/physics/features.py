@@ -19,6 +19,8 @@ All functions are vectorized over events; a chunked driver is at the bottom.
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 
 # must match team/data.py
@@ -296,6 +298,32 @@ def compute_raw(pt, eta, phi, dxy, mask) -> dict:
     f["dm_higgs"] = np.sqrt((m_hi - M_H) ** 2 + (m_lo - M_H) ** 2)
     f["m_4jet"] = _comb_mass(J, (0, 1, 2, 3))
 
+    # --- top tag in disguise, from the leading 6 candidates directly -------
+    # Hadronic tt is the mode the baseline loses on (0.723), and it is the one
+    # with a W -> qq and a t -> Wb inside it.  Working on candidates rather than
+    # on clustered jets keeps this cheap: the 15 pair masses are computed once,
+    # and every 3-candidate mass is then just a sum, because for massless
+    # constituents m_ijk^2 = m_ij^2 + m_ik^2 + m_jk^2.
+    K = 6
+    m2_pair, pair_idx = {}, list(itertools.combinations(range(K), 2))
+    for i, j in pair_idx:
+        de = eta[:, i] - eta[:, j]
+        dp = _dphi(phi[:, i], phi[:, j])
+        m2_pair[(i, j)] = np.maximum(
+            2.0 * pt[:, i] * pt[:, j] * (np.cosh(de) - np.cos(dp)), 0.0)
+    mjj = np.sqrt(np.stack([m2_pair[k] for k in pair_idx], axis=1))
+    f["dm_W6"] = np.abs(mjj - M_W).min(1)
+    f["m_W6"] = mjj[rows, np.abs(mjj - M_W).argmin(1)]
+    f["mjj_max6"] = mjj.max(1)
+
+    trip_idx = list(itertools.combinations(range(K), 3))
+    mjjj = np.sqrt(np.stack([m2_pair[(a, b)] + m2_pair[(a, c)] + m2_pair[(b, c)]
+                             for a, b, c in trip_idx], axis=1))
+    f["dm_top6"] = np.abs(mjjj - M_TOP).min(1)
+    f["m_top6"] = mjjj[rows, np.abs(mjjj - M_TOP).argmin(1)]
+    # the tt signature is a W *inside* a top: score both at once
+    f["dm_Wtop6"] = f["dm_W6"] + f["dm_top6"]
+
     # ln dR for the 6 pairs among the leading 4 candidates.  Of ParT's four pair
     # quantities this is the only one that pays for its columns (stage 4), and 6
     # numbers after the pool is a size a trigger student can carry.
@@ -362,6 +390,8 @@ TRANSFORM = {
     "dm_W": "log1p", "m_jj_maxpt": "log1p", "dm_top": "log1p", "dm_Wtop": "log1p",
     "m_bb1": "log1p", "m_bb2": "log1p", "dm_pair": "log1p", "dm_higgs": "log1p",
     "m_4jet": "log1p", "dR_j12": "linear", "deta_j12": "linear",
+    "dm_W6": "log1p", "m_W6": "log1p", "mjj_max6": "log1p",
+    "dm_top6": "log1p", "m_top6": "log1p", "dm_Wtop6": "log1p",
     **{f"p{i+1}{j+1}_lndR": "linear" for i in range(4) for j in range(i + 1, 4)},
     **{f"p{i+1}{j+1}_lndRc": "linear" for i in range(4) for j in range(i + 1, 4)},
 }
@@ -401,6 +431,9 @@ COST = {
     "m_4jet": "jets", "dR_j12": "jets", "deta_j12": "jets",
     # only 6 of the 120 pairs, and the leading 4 candidates are known positions:
     # 6 x (2 subtractions + 2 squares + a log) with no search and no clustering
+    # 15 pair masses over the leading 6; the 20 triple masses are then adds only
+    "dm_W6": "pair-lead6", "m_W6": "pair-lead6", "mjj_max6": "pair-lead6",
+    "dm_top6": "pair-lead6", "m_top6": "pair-lead6", "dm_Wtop6": "pair-lead6",
     **{f"p{i+1}{j+1}_lndR": "pair-lead4" for i in range(4) for j in range(i + 1, 4)},
     **{f"p{i+1}{j+1}_lndRc": "pair-lead4" for i in range(4) for j in range(i + 1, 4)},
 }

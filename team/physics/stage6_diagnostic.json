@@ -1,0 +1,133 @@
+{
+ "n_fit": 400000,
+ "max_iter": 300,
+ "rows": [
+  {
+   "setup": "A  11 event features only",
+   "n_cols": 11,
+   "auc_all": 0.8742145270500001,
+   "auc_qcd": 0.9172921072210722,
+   "auc_tt": 0.7392116650166501,
+   "auc_w": 0.966137051208976
+  },
+  {
+   "setup": "B  A + |dxy| order statistics",
+   "n_cols": 15,
+   "auc_all": 0.88134398295,
+   "auc_qcd": 0.9279425317253173,
+   "auc_tt": 0.7471764481144811,
+   "auc_w": 0.9689103419931602
+  },
+  {
+   "setup": "C  A + affordable event scalars",
+   "n_cols": 56,
+   "auc_all": 0.8997789187,
+   "auc_qcd": 0.9327326283262833,
+   "auc_tt": 0.7947715981159812,
+   "auc_w": 0.9718303680926381
+  },
+  {
+   "setup": "D  C + jet-clustered scalars",
+   "n_cols": 74,
+   "auc_all": 0.9037519724,
+   "auc_qcd": 0.9358834215342153,
+   "auc_tt": 0.8029810284102841,
+   "auc_w": 0.9723894081118379
+  },
+  {
+   "setup": "E  D + rich summaries + pair distances",
+   "n_cols": 128,
+   "auc_all": 0.9051517404,
+   "auc_qcd": 0.9360854930549305,
+   "auc_tt": 0.8064040800408003,
+   "auc_w": 0.9729636137277256
+  }
+ ],
+ "affordable": [
+  "mpt",
+  "mpt_over_ht",
+  "mpt_sig",
+  "min_dphi_mpt",
+  "iso_min",
+  "iso_lead_pt",
+  "n_iso",
+  "iso_lead_pt_s4",
+  "n_iso_s4",
+  "iso_min_s4",
+  "iso_lead_pt_c",
+  "n_iso_c",
+  "iso_lead_pt_s8",
+  "n_iso_s8",
+  "mt_lep_mpt",
+  "n_dxy_p05",
+  "n_dxy_p20",
+  "ptw_dxy",
+  "max_pt_dxy",
+  "dxy_lead4",
+  "dxy_ord1",
+  "dxy_ord2",
+  "dxy_ord3",
+  "dxy_ord4",
+  "dxy_ord4_frac",
+  "m6",
+  "m8",
+  "m16",
+  "ht4_frac",
+  "pt_ratio_41",
+  "centrality",
+  "eta_spread",
+  "sphericity_T",
+  "p12_lndR",
+  "p12_lndRc",
+  "p13_lndR",
+  "p13_lndRc",
+  "p14_lndR",
+  "p14_lndRc",
+  "p23_lndR",
+  "p23_lndRc",
+  "p24_lndR",
+  "p24_lndRc",
+  "p34_lndR",
+  "p34_lndRc"
+ ],
+ "jets": [
+  "n_jets15",
+  "n_jets30",
+  "jet1_m",
+  "jet_m_max",
+  "jet_ptdxy_max",
+  "n_bjets",
+  "ht_jets4",
+  "dm_W",
+  "m_jj_maxpt",
+  "dm_top",
+  "dm_Wtop",
+  "m_bb1",
+  "m_bb2",
+  "dm_pair",
+  "dm_higgs",
+  "m_4jet",
+  "dR_j12",
+  "deta_j12"
+ ],
+ "reference": {
+  "B1e_16p_1M (2,057 params, 2M events, GPU)": [
+   0.88687,
+   0.9303,
+   0.7587,
+   0.9716
+  ],
+  "c2_base_cpu (same net, 600k events, CPU)": [
+   0.88397,
+   0.9292,
+   0.7514,
+   0.9712
+  ],
+  "c2_canon (canonical inputs, 600k, CPU)": [
+   0.90099,
+   0.9339,
+   0.7961,
+   0.9729
+  ]
+ }
+}

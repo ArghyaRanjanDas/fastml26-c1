@@ -132,6 +132,12 @@
   "event_feature_clip": 5.0,
   "event_features_computed_from_n_candidates": 16,
   "fold_check_max_abs_diff": 4.947185516357422e-06,
+  "group_ids": {
+    "0": "QCD",
+    "1": "HH_4b (signal)",
+    "2": "tt",
+    "3": "Wjets"
+  },
   "particle_channels": [
     "log_pt",
     "eta",

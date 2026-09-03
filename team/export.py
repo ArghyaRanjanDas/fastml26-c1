@@ -133,7 +133,7 @@ def main():
     X, F, y, g, cache_meta = load_cache(args.eval_tag)
     rng = np.random.default_rng(args.seed)
     idx = rng.choice(len(X), size=min(args.n_sample, len(X)), replace=False)
-    Xs, Fs, ys = X[idx][:, :npart], F[idx], y[idx]
+    Xs, Fs, ys, gs = X[idx][:, :npart], F[idx], y[idx], g[idx]
     xt, ft = torch.from_numpy(Xs), torch.from_numpy(Fs)
 
     with torch.no_grad():
@@ -200,6 +200,7 @@ def main():
         event_feature_clip=EVENT_CLIP if use_evt else None,
         event_features_computed_from_n_candidates=16 if use_evt else None,
         fold_check_max_abs_diff=max_diff,
+        group_ids={"0": "QCD", "1": "HH_4b (signal)", "2": "tt", "3": "Wjets"},
         particle_channels=list(cache_meta.get(
             "particle_channels", ["log_pt", "eta", "dxy", "cos_phi", "sin_phi"])),
         pool=summary.get("pool", "mean"),
@@ -210,7 +211,9 @@ def main():
     )
     (EXPORT / f"{stem}.json").write_text(json.dumps(spec, indent=2))
 
-    arrays = dict(X=Xs, y=ys, scores=s_flat, particles=Xs)
+    # group: 0 QCD, 1 HH_4b (signal), 2 tt, 3 W+jets -- lets synth.py report
+    # per-background HLS AUC, which is where the tt weakness shows up.
+    arrays = dict(X=Xs, y=ys, group=gs, scores=s_flat, particles=Xs)
     if use_evt:
         arrays["F"] = Fs
         arrays["event"] = Fs
