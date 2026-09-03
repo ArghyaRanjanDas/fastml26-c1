@@ -73,10 +73,21 @@ cfg = hls4ml.utils.config_from_keras_model(model, granularity="name", default_pr
 outdir = os.path.expanduser(f"~/fastml26/hls_{a.tag}")
 hm = hls4ml.converters.convert_from_keras_model(model, hls_config=cfg, output_dir=outdir, backend="Vitis", part=a.part, clock_period=a.clock, io_type="io_parallel")
 hm.compile()
-# closure check on random (or exported) inputs
-xs = [np.random.rand(200, a.npart, a.nfeat).astype("float32")] + ([np.random.rand(200, a.nevt).astype("float32")] if a.nevt else [])
+# closure check: prefer the exported eval sample (real preprocessed inputs + labels + float scores)
+sample = os.path.join(os.path.dirname(a.export), "eval_sample.npz") if a.export else None
+if a.weights and a.weights.endswith("_8p.npz"): sample = sample.replace("eval_sample.npz", "eval_sample_8p.npz")
+if sample and os.path.exists(sample):
+    z = np.load(sample); keys = z.files; print("eval sample keys:", keys)
+    X = z[[k for k in keys if k.startswith("X")][0]].astype("float32"); F = z[[k for k in keys if k.startswith("F") or k=="event"][0]].astype("float32") if a.nevt else None
+    y = z[[k for k in keys if k.startswith("y") or k=="labels"][0]]; s_ref = z[[k for k in keys if "score" in k][0]] if any("score" in k for k in keys) else None
+    xs = [X] + ([F] if a.nevt else [])
+else:
+    xs = [np.random.rand(200, a.npart, a.nfeat).astype("float32")] + ([np.random.rand(200, a.nevt).astype("float32")] if a.nevt else []); y = s_ref = None
 yk = model.predict(xs, verbose=0).ravel(); yh = hm.predict(xs if len(xs) > 1 else xs[0]).ravel()
-print(f"keras-vs-hls max|diff| = {np.max(np.abs(yk - yh)):.4f}  (fixed-point {a.precision})")
+print(f"keras-vs-hls max|diff| = {np.max(np.abs(yk - yh)):.4f}  mean|diff| = {np.mean(np.abs(yk - yh)):.4f}  (fixed-point {a.precision})")
+if y is not None:
+    from sklearn.metrics import roc_auc_score
+    print(f"AUC on sample: keras {roc_auc_score(y, yk):.5f}  hls {roc_auc_score(y, yh):.5f}" + (f"  (stored float scores {roc_auc_score(y, s_ref):.5f})" if s_ref is not None else ""))
 if a.no_synth: sys.exit(0)
 t0 = time.time(); rep = hm.build(csim=False, synth=True, vsynth=False); dt = time.time() - t0
 print(f"csynth done in {dt/60:.1f} min"); hls4ml.report.read_vivado_report(outdir)
