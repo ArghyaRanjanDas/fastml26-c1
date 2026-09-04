@@ -217,7 +217,7 @@ cd /work/users/das214/fastml26/fastml26-c1/team/attn
 git -C ../.. pull
 V=../../../venv/bin/python
 for b in 1e-6 3e-6 1e-5; do
-  KERAS_BACKEND=torch $V train_attn.py --tag q3_b$b --quantized --init-from a_d16_b2 \
+  KERAS_BACKEND=torch $V train_attn.py --tag q3_b$b --quantized --init-from a_d16_b2_t2 \
       --beta0 $b --beta-ramp 8 --train-tag train1M --epochs 35 --lr 1e-3 > logs_q3_b$b.log 2>&1
   grep -E "EVAL AUC|OFFICIAL" logs_q3_b$b.log
 done
@@ -229,5 +229,6 @@ others** — the A10 screen says that is the beta that lands nearest the ~350k-E
 2M events. Report, per beta: even-thirds AUC, **official-mixture AUC**, vs-tt, and EBOPs.
 **Number to beat: official-mixture 0.87957** (the DeepSet lane's synthesized `model_2777_rich`;
 its even-thirds number is 0.9077). The float attention students sit at 0.88084 (`a_d16`,
-3,073 w) and 0.88508 (`a_d16_b2`, 5,233 w), and QAT is bit-exact to HLS, so whatever this job
-returns is the FPGA number.
+3,073 w) and **0.88825 (`a_d16_b2_t2`, 5,233 w — the seed this job warm-starts from; same
+shape as `a_d16_b2` but distilled from the new ParT-ensemble teacher, +0.0032)**, and QAT is
+bit-exact to HLS, so whatever this job returns is the FPGA number.
