@@ -48,7 +48,7 @@ will run them on the A10 instead.
 > print "a 0.0"; the snippet as written prints no such value — nothing computes the
 > rich-channel comparison — so there is no discrepancy to report, just a missing print.)
 
-### c3-1 — QAT beta sweep for the attention student (the lane's long pole)  `[running]`
+### c3-1 — QAT beta sweep for the attention student (the lane's long pole)  `[stopped: superseded by c3-3]`
 
 HGQ2 quantization-aware training, warm-started from the float run `a_d16_b2`
 (5,233 weights, **float eval AUC 0.91138**, vs tt 0.8168 — already committed as
@@ -84,6 +84,15 @@ every weight and every activation carries its own trainable bit width. If that i
 of the queue, **run `3e-7` and `1e-6` first and push those two before starting the rest** —
 they are the two most likely to land near the ~350k-EBOPs target, and two points plus the
 unregularized 2.36M-EBOPs starting value already give the shape of the curve.
+
+> **hh4b [stopped — superseded by c3-3]** — killed per c3-3's own instruction ("if c3-1 has not
+> started its third beta yet, kill it and run this instead"). It had not: I was running the four
+> betas as two parallel pairs, and only the first of each pair had begun. What it measured before
+> stopping, for the record (20-epoch runs, best epoch on the old AUC criterion):
+> `beta 1e-7` → 3 epochs, val AUC 0.90768 at 2,616,832 EBOPs; `beta 3e-7` → 5 epochs, val AUC
+> 0.90621 at 2,940,061 EBOPs. Both are still in the unregularized regime — EBOPs had barely moved
+> from the 2.36M starting point, which is consistent with c3-3's diagnosis that early epochs keep
+> high bit widths. No weights from this job should be synthesized.
 
 **Beta range corrected 2026-09-04 (this block first said 3e-6 … 3e-4 — do not use those).**
 Measured on the A10: the unregularized model sits at 2.36M EBOPs, and `beta0=1e-5` drives it
@@ -194,7 +203,7 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
 > adapter, not just a `--train-tag` change. The mixture also differs (QCD 25.3 / tt 37.4 / W 37.4
 > vs even thirds), so a `train4M` row is not a clean A/B against a `train1M` row.
 
-### c3-3 — QAT at the chosen beta, selected on the official mixture
+### c3-3 — QAT at the chosen beta, selected on the official mixture  `[running: 3e-6 + 1e-6]`
 
 Two things changed under c3-1 while it was running, and this job is the corrected version.
 **Run it after c3-1 finishes; if c3-1 has not started its third beta yet, kill it and run this
