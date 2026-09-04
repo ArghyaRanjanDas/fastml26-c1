@@ -213,7 +213,7 @@ column is usable but its *saved weights* are not the ones we want to synthesize.
    while the run ended at 900k). Selection now starts only after beta has finished ramping.
 
 ```bash
-cd /work/users/das474/fastml26/fastml26-c1/team/attn 2>/dev/null || cd /work/users/das214/fastml26/fastml26-c1/team/attn
+cd /work/users/das214/fastml26/fastml26-c1/team/attn
 git -C ../.. pull
 V=../../../venv/bin/python
 for b in 1e-6 3e-6 1e-5; do
