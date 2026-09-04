@@ -672,6 +672,7 @@ as what it is worth. Multiply-accumulates per event, at φ 32-16-8 / ρ 32-16:
 | `c2_rich_mm` | + those channels AND max-pool | 15,872 | 2,521 | 0.89879 | 0.87005 | 0.7913 | 0.9327 | 0.9724 | 0.2017 |
 | `c2_canon` | **canonical set**: 11 channels + max-pool + 8 event features | 15,872 | 2,777 | 0.90099 | 0.87300 | 0.7961 | 0.9339 | 0.9729 | 0.2163 |
 | `c2_canon_narrow` | canonical set, φ 24-12-8 | 10,368 | 2,421 | 0.90150 | 0.87504 | 0.8008 | 0.9316 | 0.9721 | 0.2075 |
+| `c2_canon_8p` | canonical set, leading 8 candidates | 7,936 | 2,777 | 0.89362 | 0.86563 | 0.7860 | 0.9248 | 0.9701 | 0.1794 |
 | `c2_canon3` | canonical + dxysig/pdgId features, φ 24-12-8 | 10,368 | 2,805 | 0.91540 | 0.89227 | 0.8278 | 0.9420 | 0.9764 | 0.2252 |
 | `c2_canon3_wide` | canonical + dxysig/pdgId features, φ 32-16-8 | 15,872 | 3,161 | 0.91726 | 0.89456 | 0.8316 | 0.9436 | 0.9765 | 0.2303 |
 | *(reference)* `ds_big_s0` teacher, 72k params, 2M events | — | — | 72,717 | 0.91515 | — | 0.8261 | 0.9436 | 0.9757 | 0.2717 |
