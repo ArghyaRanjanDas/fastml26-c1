@@ -1,5 +1,8 @@
 # FastML 2026 Hackathon Challenges
 
+> **Team fastml26-c1 results (Challenge 1):** see [`team/README.md`](team/README.md) — headline: 2.7k-param student, AUC 0.909 float / 0.906 synthesized on a VU9P, 253k LUT, 1,692 DSP, 0.42 µs, one SLR.
+
+
 Resources and instructions for use during the FastML2026 hackathon. More details on the challenges and competition can be found on the [conference website.](https://indico.cern.ch/event/1654479/page/43940-hackathon)
 
 ---
