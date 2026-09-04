@@ -1127,8 +1127,10 @@ particles (16, 11) -> EinsumDense d, relu           (= c1's Conv1D k=1 phi, shar
 | `a_d16_nokd` | no distillation | 3,073 | 0.87883 | 0.90648 | 0.9390 | 0.8072 | 0.9732 |
 | **`a_d16`** | **the candidate** | **3,073** | **0.88084** | 0.90818 | 0.9403 | 0.8100 | 0.9742 |
 | `a_d16_h2` | 2 heads | 3,073 | 0.88223 | 0.90864 | 0.9396 | 0.8136 | 0.9728 |
+| `a_d16_t2` | new ParT teacher | 3,073 | 0.88179 | 0.90856 | 0.9396 | 0.8123 | 0.9737 |
 | `a_d16_b2` | 2 blocks | 5,233 | 0.88508 | 0.91138 | 0.9422 | 0.8168 | 0.9752 |
 | `a_d32` | d = 32 | 10,033 | 0.88687 | 0.91267 | 0.9429 | 0.8198 | 0.9753 |
+| **`a_d16_b2_t2`** | **2 blocks + new ParT teacher** | **5,233** | **0.88825** | 0.91267 | 0.9433 | **0.8236** | 0.9757 |
 | *reference:* `B1e_16p_1M` | DeepSet student | 2,041 | 0.85080 | 0.88687 | 0.9303 | 0.7587 | 0.9716 |
 | *reference:* `model_2777_rich` | rich DeepSet, synthesized | 2,777 | 0.87957 | 0.9077 | 0.9349 | 0.8085 | 0.9743 |
 | *reference:* `ds_big_s0` | the teacher these rows distil from | 72,717 | 0.89053 | 0.91515 | 0.9436 | 0.8261 | 0.9757 |
@@ -1153,9 +1155,13 @@ much as the six rich per-candidate channels, and **the two are additive**: atten
 **2. Depth beats width.** `a_d16_b2` (2 blocks, 5,233 params) ≈ `a_d32` (1 block, 10,033) —
 half the weights and a quarter of the attention arithmetic for the same AUC.
 
-**3. Distillation is worth +0.0017 here** (`a_d16_nokd` → `a_d16`), far less than it was for
-the DeepSet student. The attention student gets most of the teacher's advantage from its own
-architecture rather than from the soft targets — it can represent what the teacher knows.
+**3. Distillation is worth +0.0020 here** (`a_d16_nokd` → `a_d16`, official 0.87883 → 0.88084),
+far less than it was for the DeepSet student. The attention student gets most of the teacher's
+advantage from its own architecture rather than from the soft targets — it can represent what
+the teacher knows. Swapping `ds_big_s0` (0.89053 official) for the ParT ensemble `ens_part4`
+(0.90510) confirms it: **+0.001 for the 1-block student, +0.0032 for the 2-block one**. A
+better teacher only pays where the student has the capacity to take it, and both gains are
+smaller than the +0.023 the encoder block itself is worth.
 
 **4. `a_d16` recovers 75 % of the teacher's margin over the DeepSet student on the scored
 metric** ((0.88084 − 0.85080) / (0.89053 − 0.85080)) with 3,073 weights against the teacher's
