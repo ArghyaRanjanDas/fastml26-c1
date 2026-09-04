@@ -193,3 +193,41 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
 > teacher in `team/teacher/` reads the 5/11 layout, so retraining it on `train4M` needs an input
 > adapter, not just a `--train-tag` change. The mixture also differs (QCD 25.3 / tt 37.4 / W 37.4
 > vs even thirds), so a `train4M` row is not a clean A/B against a `train1M` row.
+
+### c3-3 — QAT at the chosen beta, selected on the official mixture
+
+Two things changed under c3-1 while it was running, and this job is the corrected version.
+**Run it after c3-1 finishes; if c3-1 has not started its third beta yet, kill it and run this
+instead** — c3-1's checkpoints are selected on the wrong criterion (see below), so its AUC
+column is usable but its *saved weights* are not the ones we want to synthesize.
+
+1. **The scored metric is not even thirds.** The organizers' eval parquet is HH 1.00M vs
+   QCD 100k / W+jets 401k / tt 601k, so pooled AUC = `0.09*QCD + 0.36*Wjets + 0.55*tt` and is
+   tt-dominated. `train_attn.py` now prints and stores `official_auc` and **selects the best
+   epoch on it**. On the even-thirds number the attention student beats the DeepSet student by
+   +0.021; on the official mixture it beats it by **+0.030**, because attention's gain is
+   concentrated exactly where the weight is.
+2. **Best-epoch selection under an EBOPs penalty was wrong.** The first epochs have both the
+   highest AUC and the highest bit widths, so selecting on AUC across the whole run returned a
+   model that had never paid the penalty (e.g. a beta=3e-6 run kept epoch 2 at 1.79M EBOPs
+   while the run ended at 900k). Selection now starts only after beta has finished ramping.
+
+```bash
+cd /work/users/das474/fastml26/fastml26-c1/team/attn 2>/dev/null || cd /work/users/das214/fastml26/fastml26-c1/team/attn
+git -C ../.. pull
+V=../../../venv/bin/python
+for b in 1e-6 3e-6 1e-5; do
+  KERAS_BACKEND=torch $V train_attn.py --tag q3_b$b --quantized --init-from a_d16_b2 \
+      --beta0 $b --beta-ramp 8 --train-tag train1M --epochs 35 --lr 1e-3 > logs_q3_b$b.log 2>&1
+  grep -E "EVAL AUC|OFFICIAL" logs_q3_b$b.log
+done
+git add -A runs && git commit -m "c3-3: QAT selected on the official mixture" && git push
+```
+
+Expected ~4 h per beta (35 epochs x ~7 min), so **run `3e-6` first and push it before the
+others** — the A10 screen says that is the beta that lands nearest the ~350k-EBOPs target on
+2M events. Report, per beta: even-thirds AUC, **official-mixture AUC**, vs-tt, and EBOPs.
+**Number to beat: official-mixture 0.87957** (the DeepSet lane's synthesized `model_2777_rich`;
+its even-thirds number is 0.9077). The float attention students sit at 0.88084 (`a_d16`,
+3,073 w) and 0.88508 (`a_d16_b2`, 5,233 w), and QAT is bit-exact to HLS, so whatever this job
+returns is the FPGA number.
