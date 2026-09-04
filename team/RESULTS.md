@@ -844,12 +844,29 @@ Row counts straight out of `eval/` (2,102,226 events, 47.6% of them signal):
 | `WJetsToLNu_13TeV-madgraphMLM-pythia8` | 200,281 | 18.18% |
 | `WJetsToQQ_13TeV-madgraphMLM-pythia8` | 200,531 | 18.20% |
 
-Grouped, the official background is **QCD 9.1%, tt 54.5%, W+jets 36.4%** — against our
+Note that **`WJetsToQQ` is a separate process from `WJetsToLNu`**, not a variant of
+it: 200,531 and 200,281 events, and the two together are the W+jets group. Counting
+only the leptonic one would put W+jets at 18% instead of 36%.
+
+Grouped, the official background is **QCD 9.12%, tt 54.50%, W+jets 36.38%** — against our
 even thirds. So **no: the official metric weights QCD far *less* than our eval
 slice does (9% against 33%), and tt far more (55% against 33%).** Our worst
-background is the official metric's dominant one. Re-weighting our saved eval
-scores to those proportions (AUC is a rank statistic, so only the background
-composition matters):
+background is the official metric's dominant one.
+
+The re-weighting is exact rather than approximate, and worth stating as an
+identity: AUC is the probability that a random signal event outranks a random
+background event, and when the background is a mixture that probability is linear
+in the mixture weights —
+
+> `AUC_pooled = Σ_g w_g · AUC_vs_g` = `0.0912·AUC_QCD + 0.5450·AUC_tt + 0.3638·AUC_W`
+
+— so the per-background AUCs already in every summary json are all that is needed;
+no rescoring. Computed both ways (sample weights on the saved scores, and the
+weighted mean of per-group AUCs) the two agree to 1e-5. The rounded weights
+0.09 / 0.55 / 0.36 give a number about 0.0008 low — small, but it is a free
+0.0008, so the exact fractions are used here and in `official_auc()`.
+
+Re-weighting our saved eval scores:
 
 | run | our even mix | official eval mix | Δ |
 |---|---|---|---|
@@ -886,6 +903,33 @@ mixture from `train1M`, and a model trained on it is not a clean A/B against a
 
 A `train4M` cache with the *newer* `dxysig`/`pdgId` features (F of 31 rather than 19)
 is a rebuild away; say the word and it runs.
+
+### Exactly how `train4M` got its background
+
+**Capped, not resampled.** `stream_process` walks a process directory in sorted
+filename order and stops at that process's budget; if the directory runs out first it
+simply yields what it has. There is no sampling with replacement anywhere in
+`data.py`, and no top-up: each process's budget is independent, so QCD coming up
+short does **not** hand its shortfall to tt or W+jets. QCD was asked for 1,333,333 and
+`train/QCD_HT250toInf` contains 902,592 in total, so all 902,592 were taken, once
+each. Every other process met its budget exactly.
+
+| process | requested | kept | duplicates within `train4M` | also in `eval100k` |
+|---|---|---|---|---|
+| `HH_4b` | 4,000,000 | 4,000,000 | 0 | 0 |
+| `QCD_HT250toInf` | 1,333,333 | 902,592 | 0 | 0 |
+| `tt0123j_5f_ckm_LO_MLM_hadronic` | 444,444 | 444,444 | 0 | 0 |
+| `tt0123j_5f_ckm_LO_MLM_leptonic` | 444,444 | 444,444 | 0 | 0 |
+| `tt0123j_5f_ckm_LO_MLM_semiLeptonic` | 444,444 | 444,444 | 0 | 0 |
+| `WJetsToLNu_13TeV-madgraphMLM-pythia8` | 666,667 | 666,667 | 0 | 0 |
+| `WJetsToQQ_13TeV-madgraphMLM-pythia8` | 666,667 | 666,667 | 0 | 0 |
+
+**No event appears twice in `train4M`, and no `train4M` event appears in the eval
+slice — QCD included.** That is checked on provenance, not on directory names:
+every row carries `source_file` and `source_row` identifying its row in the
+upstream COLLIDE2V dataset, and the intersection of those keys between the events
+each cache actually consumed is empty for all seven processes
+(`physics/overlap.py`, `physics/overlap.json`).
 
 ## What to take, and what to leave
 
