@@ -137,7 +137,7 @@ pair to difference against.
 
 ---
 
-### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[running]`
+### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[running: 3e-7 done, AUC 0.89809 @ 347k EBOPs]`
 
 On the A10 (shared with screening runs) 12 epochs of HGQ2 QAT got EBOPs 853k -> 360k
 (2.4x, which is the DSP lever) but only AUC 0.89044 — below the 0.895 bar and below the
@@ -160,6 +160,22 @@ for b in 3e-7 1e-6 3e-6; do
     --beta0 $b --tag "a100_b$b" --epochs 40 --lr 5e-4 2>&1 | tail -25
 done
 ```
+
+> **hh4b [beta 3e-7 done]** — **eval AUC 0.89809**, vs QCD 0.92937, vs tt 0.79375, vs W 0.97116,
+> **EBOPs 347,049** after calibration. That **clears the 0.895 bar** and improves on the A10's
+> 0.89044 @ 360k. Official-mixture AUC (9/36/55) = **0.86982**.
+>
+> **But the checkpoint is selected on the wrong criterion — the same bug c3-3 found in the
+> attention lane, and it costs a 4x smaller model here.** Selection picked **epoch 9**
+> (val 0.89863, **350,255 EBOPs**), because early epochs have both the highest AUC and the highest
+> bit widths. The run ends at **epoch 40 with 87,377 EBOPs at val 0.89783** — that is **4.0x fewer
+> EBOPs for −0.0008 val AUC**. The tail is flat from about epoch 25 (val 0.897–0.899 while EBOPs
+> fall 131k → 87k), so almost the whole EBOPs reduction is free.
+>
+> Recommendation for whoever owns `qat_hgq.py`: select the best epoch **after the beta ramp**, and
+> break ties toward lower EBOPs (or pick the smallest model within a small AUC tolerance of the
+> best). I have not changed `qat_hgq.py` — it is c1's file and the run is still going for the other
+> two betas. Both checkpoints exist; `team/export/qat_a100_b3e-7.keras` is the epoch-9 one.
 
 > **hh4b [note]** — `team/make_student_cache.py` (and anything else importing `team/data.py`)
 > failed on the AF pod: `data.py` hardcodes `CACHE_ROOT = ~/fastml26-hackathon/team/cache`,
