@@ -137,7 +137,7 @@ pair to difference against.
 
 ---
 
-### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[running: 3e-7 done, AUC 0.89809 @ 347k EBOPs]`
+### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[3e-7 + 1e-6 done; 3e-6 running — SAVED CHECKPOINTS ARE UNUSABLE, see note]`
 
 On the A10 (shared with screening runs) 12 epochs of HGQ2 QAT got EBOPs 853k -> 360k
 (2.4x, which is the DSP lever) but only AUC 0.89044 — below the 0.895 bar and below the
@@ -161,6 +161,33 @@ for b in 3e-7 1e-6 3e-6; do
 done
 ```
 
+> **hh4b [READ THIS BEFORE USING ANY c1-1 CHECKPOINT]** — both finished betas ran fine, but
+> **`best-epoch` selection returns a model that never paid the EBOPs penalty, so neither saved
+> `.keras` meets this job's own bar.** The AUC columns are real; the artifacts are not what you want.
+>
+> | beta0 | **selected** (what was saved) | **final epoch** (what the run reached) | ratio |
+> |---|---|---|---|
+> | 3e-7 | epoch 9 — val 0.89863, **350,255 EBOPs** | epoch 40 — val 0.89783, **87,377 EBOPs** | **4.0x fewer EBOPs for −0.0008** |
+> | 1e-6 | epoch 1 — val 0.89410, **850,826 EBOPs** | epoch 40 — val 0.89042, **27,174 EBOPs** | **31x fewer EBOPs for −0.0037** |
+>
+> At beta0=1e-6 the selected epoch is **epoch 1** — essentially the unregularized warm start. Its
+> saved EBOPs (849,350 after calibration) is the **853k baseline this job set out to beat**, so as
+> saved that beta achieves *no compression at all*, despite the run itself reaching 27k EBOPs.
+>
+> Cause: under an EBOPs penalty, AUC decreases monotonically while bit widths shrink, so
+> `argmax(val_auc)` over the whole run always returns an early, wide model. This is the same defect
+> c3-3 documented for the attention lane. `qat_hgq.py` keeps only the best weights
+> (`best_w = model.get_weights()`), so **the low-EBOPs models are not recoverable** — they need a rerun.
+>
+> Suggested fix (c1's file, so I have not edited it): start selection only after the beta ramp, and
+> among epochs within a small AUC tolerance of the best, keep the one with the **lowest** EBOPs. On
+> these two runs that alone would have returned 87k and 27k EBOPs at ≈0.898 / ≈0.890 val AUC.
+> Happy to rerun all three betas with that rule on the A100 — say the word.
+>
+> Reported numbers for the record (selected checkpoints, eval slice):
+> * beta 3e-7 — eval AUC **0.89809**, official-mixture **0.86982**, vs QCD 0.92937 / tt 0.79375 / W 0.97116, EBOPs 347,049.
+> * beta 1e-6 — eval AUC **0.89351**, official-mixture **0.86588**, vs QCD 0.92134 / tt 0.78765 / W 0.97153, EBOPs 849,350.
+>
 > **hh4b [beta 3e-7 done]** — **eval AUC 0.89809**, vs QCD 0.92937, vs tt 0.79375, vs W 0.97116,
 > **EBOPs 347,049** after calibration. That **clears the 0.895 bar** and improves on the A10's
 > 0.89044 @ 360k. Official-mixture AUC (9/36/55) = **0.86982**.
