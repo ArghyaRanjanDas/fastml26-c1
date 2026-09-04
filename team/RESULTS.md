@@ -452,6 +452,13 @@ $PY ensemble.py --runs part_s0 part_s1 part_e25_s2 part_e25_d20_s3 part4c_s0 --n
 `B1e_16p_1M` is 0.930 vs QCD and 0.972 vs W+jets but **0.759 vs tt**. Everything below
 asks one question: what else is in the 16 PUPPI candidates that separates HH→4b from tt?
 
+**Where it ended up.** `c2_canon3` — the same 2k-parameter DeepSet, fed the input set
+this lane built — reaches **AUC 0.9154 overall and 0.828 vs tt on 600k training
+events, at 10,368 φ MACs, which is 19% *cheaper* than today's baseline.** For
+comparison the published baseline is 0.8869 / 0.759 at 12,800 MACs on 2M events, and
+the 72,717-parameter teacher is 0.9152 / 0.826 on 2M events. None of that came from a
+new architecture; all of it came from what the network is shown.
+
 All of it runs on CPU off the existing `team/cache` tensors — the cached `X` is an
 invertible transform of (pt, η, φ, dxy), so `physics/features.py:decode()` recovers
 physical units without re-reading a single parquet file. 39 candidate features,
@@ -656,16 +663,18 @@ as what it is worth. Multiply-accumulates per event, at φ 32-16-8 / ρ 32-16:
 | ρ, +8 from max-pooling | 1,392 | +256; the max itself is comparators, no DSP |
 | 16×16 ΔR table (isolation) | ~512 mults | cos Δφ = c_i c_j + s_i s_j from inputs already there |
 
-| run | change | φ MACs | params | AUC (eval) | vs tt | vs QCD | vs W+jets | eff@99% |
-|---|---|---|---|---|---|---|---|---|
-| `c2_base_cpu` | control: 11 event features, 5 channels/candidate | 12,800 | 2,057 | 0.88397 | 0.7514 | 0.9292 | 0.9712 | 0.1737 |
-| `c2_meanmax` | + max-pool alongside mean | 12,800 | 2,329 | 0.88451 | 0.7510 | 0.9306 | 0.9720 | 0.1747 |
-| `c2_pair4` | + 24 leading-4 pair scalars (ln ΔR / kT / z / m²) | 12,800 | 2,825 | 0.88785 | 0.7646 | 0.9280 | 0.9709 | 0.1793 |
-| `c2_rich` | + 6 teacher per-candidate channels (φ sees 11) | 15,872 | 2,249 | 0.89758 | 0.7886 | 0.9328 | 0.9713 | 0.1988 |
-| `c2_rich_mm` | + those channels AND max-pool | 15,872 | 2,521 | 0.89879 | 0.7913 | 0.9327 | 0.9724 | 0.2017 |
-| `c2_canon` | **canonical set**: 11 channels + max-pool + 8 event features | 15,872 | 2,777 | 0.90099 | 0.7961 | 0.9339 | 0.9729 | 0.2163 |
-| `c2_canon_narrow` | canonical set, φ 24-12-8 | 10,368 | 2,421 | 0.90150 | 0.8008 | 0.9316 | 0.9721 | 0.2075 |
-| *(reference)* `ds_big_s0` teacher, 72k params, 2M events | — | — | 72,717 | 0.91515 | 0.8261 | 0.9436 | 0.9757 | 0.2717 |
+| run | change | φ MACs | params | AUC (eval) | AUC (official mix) | vs tt | vs QCD | vs W+jets | eff@99% |
+|---|---|---|---|---|---|---|---|---|---|
+| `c2_base_cpu` | control: 11 event features, 5 channels/candidate | 12,800 | 2,057 | 0.88397 | 0.84761 | 0.7514 | 0.9292 | 0.9712 | 0.1737 |
+| `c2_meanmax` | + max-pool alongside mean | 12,800 | 2,329 | 0.88451 | 0.84773 | 0.7510 | 0.9306 | 0.9720 | 0.1747 |
+| `c2_pair4` | + 24 leading-4 pair scalars (ln ΔR / kT / z / m²) | 12,800 | 2,825 | 0.88785 | 0.85455 | 0.7646 | 0.9280 | 0.9709 | 0.1793 |
+| `c2_rich` | + 6 teacher per-candidate channels (φ sees 11) | 15,872 | 2,249 | 0.89758 | 0.86821 | 0.7886 | 0.9328 | 0.9713 | 0.1988 |
+| `c2_rich_mm` | + those channels AND max-pool | 15,872 | 2,521 | 0.89879 | 0.87005 | 0.7913 | 0.9327 | 0.9724 | 0.2017 |
+| `c2_canon` | **canonical set**: 11 channels + max-pool + 8 event features | 15,872 | 2,777 | 0.90099 | 0.87300 | 0.7961 | 0.9339 | 0.9729 | 0.2163 |
+| `c2_canon_narrow` | canonical set, φ 24-12-8 | 10,368 | 2,421 | 0.90150 | 0.87504 | 0.8008 | 0.9316 | 0.9721 | 0.2075 |
+| `c2_canon3` | canonical + dxysig/pdgId features, φ 24-12-8 | 10,368 | 2,805 | 0.91540 | 0.89227 | 0.8278 | 0.9420 | 0.9764 | 0.2252 |
+| `c2_canon3_wide` | canonical + dxysig/pdgId features, φ 32-16-8 | 15,872 | 3,161 | 0.91726 | 0.89456 | 0.8316 | 0.9436 | 0.9765 | 0.2303 |
+| *(reference)* `ds_big_s0` teacher, 72k params, 2M events | — | — | 72,717 | 0.91515 | — | 0.8261 | 0.9436 | 0.9757 | 0.2717 |
 
 Max-pooling on its own is worth +0.0005. The 24 pair scalars are worth +0.013 vs tt.
 The 6 per-candidate channels are worth **+0.037 vs tt**, and the three together
@@ -720,7 +729,17 @@ consume the identical tensor and the published soft targets stay valid.
 | 12 | `n_iso` | number of pT>10 candidates with cone-pT/pT < 0.15, standardized |
 | 13-18 | `p12_lndRc` … `p34_lndRc` | ½ln(Δη² + 2(1−cosΔφ)) for the 6 pairs among the leading 4 |
 
-All eight are standardized with frozen constants in `data.EXTRA_STANDARDIZE`
+**Since stage 7, `EXTRA_FEATURES` has 20 entries, not 8**, so a cache built today
+has `F` of width **31**: the 8 above, then `dxy_ord2/3/4`, then the nine from
+`dxysig`/`pdgId` (`dsig_ptw`, `dsig_sum`, `dsig_ord3`, `dsig_ord4`, `n_dsig_gt3`,
+`n_lep`, `lead_lep_pt`, `lep_pt_frac`, `charged_frac`). `data.effective_event_features(True)`
+is the authoritative order and every cache's `meta.json` records it. The two extra
+parquet leaves are read only when a selected feature needs them, so a cache with
+`--extra-features` off is unchanged and costs the same to build.
+`train300k_c3` / `eval100k_c3` are built and are what `c2_canon3` trains on;
+`train300k_c2` / `eval100k_c2` / `train4M` are the earlier 19-feature version.
+
+All of them are standardized with frozen constants in `data.EXTRA_STANDARDIZE`
 (re-measure with `python data.py --fit-extra-norm`). The pair distance uses
 `2(1−cosΔφ)` rather than `Δφ²` deliberately: it needs no atan2 and no 2π wrap in
 firmware, and it measures the same (+0.0158 vs +0.0156 AUC vs tt). Full firmware
@@ -907,7 +926,6 @@ relational information. A ParT teacher may still change that — but on this evi
 pairwise is the smaller half.
 
 <!-- c2:tt-study:end -->
-
 ## Teacher quality is not the bottleneck — student capacity is
 
 The team teacher was upgraded mid-round from `ds_big_s0` (AUC 0.91515, tt 0.82612) to
