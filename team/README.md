@@ -62,9 +62,21 @@ Background mixture in **both** splits: **QCD 9 % · W+jets 36 % · tt̄ 55 %** (
 | `part_b4k_s6` | binary | same, batch 4k | 1,334,013 | 0.9234 | 0.9453 | 0.8490 | 0.9759 | |
 | **`part4c_s0`** | **four-class** | same trunk, softmax over HH/QCD/tt̄/W | 1,334,208 | **0.9246** | **0.9468** | **0.8511** | 0.9759 | best single model |
 | `ens_part2` | binary | mean logit of 2 seeds | 2,668,026 | 0.9245 | 0.9460 | 0.8513 | 0.9762 | |
-| **`ens_part4_ds`** | binary | 4 ParT seeds + DeepSet | 5,408,769 | **0.9247** | 0.9471 | 0.8501 | 0.9768 | **published soft targets** |
+| **`ens_part4`** | binary | mean logit of 4 ParT seeds | 5,336,052 | **0.9248** | 0.9464 | 0.8518 | 0.9762 | **published soft targets** (`soft_targets_*.npy`) |
+| `ens_part4_ds` | binary | 4 ParT seeds + DeepSet | 5,408,769 | 0.9247 | 0.9471 | 0.8501 | 0.9768 | **not** published — see below |
+| **`ens_part4_4c`** | mixed | 4 ParT seeds + `part4c_s0` | 5,336,052 | **0.9251** | 0.9468 | **0.8522** | 0.9763 | best overall; logits on disk, not yet published |
 
 Five independent ParT-lite runs agree to ±0.0005 → the 16-candidate inputs cap the teacher near **0.925**. tt̄ is the only hard background.
+
+Two corrections to an earlier version of this table. **The published soft targets are `ens_part4`, not
+`ens_part4_ds`**: adding the DeepSet to the ensemble buys QCD and W+jets but costs 0.0017 vs tt̄, which
+nets −0.0001 on even thirds and **−0.0007 on the official 9/36/55 mixture**, where tt̄ carries 55 % of the
+background. It was measured and rejected, not published. And the best teacher is `ens_part4_4c` at
+**0.9251** (official 0.9054); its logits are in `team/teacher/runs/ens_part4_4c/`, deliberately not swapped
+into `soft_targets_*.npy` while the c3/c1 distillation jobs are reading those files.
+
+On the official mixture (§6) the teachers rank: `ens_part4_4c` 0.9054 · `ens_part4` 0.9051 ·
+`part4c_s0` 0.9047 · `ens_part4_ds` 0.9045 · `part_s0` 0.9042 · `ds_big_s0` 0.8905.
 
 ### 5b. Students, float (pod A10, agents `c1` / `c3`; same eval slice)
 
