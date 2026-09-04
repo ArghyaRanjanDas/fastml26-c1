@@ -412,6 +412,49 @@ worth ~nothing to students sitting 0.012–0.019 below the teacher. The better l
 `team/teacher/runs/ens_part4_4c/logits_*.npy` and the swap can happen once the distillation lanes
 are quiescent — say the word.
 
+### The organizers' mixture: every teacher, reweighted
+
+Our caches use **even thirds** of QCD / tt / W+jets, but the organizers' eval set is
+**9 % QCD / 36 % W+jets / 55 % tt** (`team/fpga/RESULTS-fpga.md`). Reweighting is exact, not an
+approximation: for a fixed signal set the Mann-Whitney AUC is `P(s_sig > s_bkg)`, and for a mixture
+background that expands to `Σ_k w_k · AUC_k`. Checked on `eval100k` — the even-thirds pooled AUC
+equals `(QCD + tt + W)/3` to **0.0e+00**. So `official = 0.09·QCD + 0.36·W + 0.55·tt` needs no
+retraining or rescoring, just the per-group numbers we already report.
+
+| run | even thirds | **official 9/36/55** | Δ | vs QCD | vs tt | vs W+jets |
+|---|---|---|---|---|---|---|
+| `B1e_16p_1M` *(student ref)* | 0.88687 | 0.85079 | −0.03608 | 0.93027 | 0.75869 | 0.97163 |
+| `ds_big_s0` | 0.91515 | 0.89054 | −0.02460 | 0.94363 | 0.82612 | 0.97569 |
+| `part_s0` | 0.92392 | 0.90415 | −0.01977 | 0.94543 | 0.85042 | 0.97591 |
+| `part_b4k_s6` | 0.92338 | 0.90332 | −0.02006 | 0.94531 | 0.84896 | 0.97587 |
+| `part_b4k_s7` | 0.92318 | 0.90306 | −0.02011 | 0.94527 | 0.84872 | 0.97554 |
+| `part4c_s0` *(4-class)* | 0.92460 | 0.90465 | −0.01995 | 0.94675 | 0.85110 | 0.97594 |
+| `ens_part4` *(published)* | 0.92480 | 0.90511 | −0.01969 | 0.94636 | 0.85181 | 0.97622 |
+| `ens_part4_ds` *(+DeepSet)* | 0.92468 | 0.90445 | −0.02023 | 0.94713 | 0.85010 | 0.97681 |
+| `ens_part6_4c` | 0.92508 | 0.90534 | −0.01973 | 0.94678 | 0.85205 | 0.97640 |
+| **`ens_part4_4c`** | **0.92511** | **0.90542** | −0.01969 | 0.94676 | 0.85223 | 0.97634 |
+
+**Three things this changes, and one it does not.**
+
+*It does not change which teacher wins.* `ens_part4_4c` is best on both metrics, and the top four
+keep their order. The even-thirds number was not steering us wrong.
+
+*It sharpens the DeepSet-blend decision.* `ens_part4_ds` was already −0.0001 on even thirds; on the
+official mixture it is **−0.0007** and falls below even the two-seed ensemble. Blending in the
+DeepSet buys QCD and W+jets, which together carry 45 % of the official background, and pays in tt,
+which alone carries 55 %. Excluding it was right, and it is more clearly right here.
+
+*It widens the distillation headroom.* Teacher minus student goes from **+0.0382** (even thirds) to
+**+0.0546** (official). Every teacher loses ~0.020 to the reweighting, but the student loses
+**0.036**, because the mixture upweights precisely the background the small model is worst at.
+
+*It makes tt the whole game.* At 55 % weight, one point of vs-tt AUC is worth 6.1× one point of
+vs-QCD. Any future trade that spends tt to buy QCD is now almost certainly a loss.
+
+`train_teacher.py` prints both numbers and stores `eval_auc_official` in every summary, and
+`--mixture official` reweights the *training* loss so the background the teacher sees matches
+9/36/55 rather than the cache's mixture.
+
 ### 4-class soft targets
 
 | file | shape | content |

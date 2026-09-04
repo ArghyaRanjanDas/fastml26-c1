@@ -24,8 +24,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common import (CACHE_TAGS, CLASS_ORDER, HERE, RUNS, GROUP_ID, binary_score, load_cache,
-                    auc_report, quick_auc, write_json, _check_constants)
+from common import (CACHE_TAGS, CLASS_ORDER, HERE, RUNS, GROUP_ID, OFFICIAL_MIXTURE,
+                    binary_score, load_cache, auc_report, official_auc, quick_auc,
+                    write_json, _check_constants)
 from models import MODELS, count_params
 
 
@@ -98,6 +99,10 @@ def main():
     ap.add_argument("--warmup-epochs", type=float, default=2.0)
     ap.add_argument("--label-smoothing", type=float, default=0.05)
     ap.add_argument("--tt-weight", type=float, default=1.0, help="loss weight on tt background events")
+    ap.add_argument("--mixture", default="cache", choices=["cache", "official"],
+                    help="'official' reweights the background loss so its effective mixture is the "
+                         "organizers' 9%% QCD / 36%% W / 55%% tt instead of whatever the cache holds. "
+                         "Signal keeps weight 1 and the total background weight is preserved.")
     ap.add_argument("--clip", type=float, default=1.0)
     ap.add_argument("--ema", type=float, default=0.0, help="EMA decay (0 = off); eval/soft targets use the EMA")
     ap.add_argument("--dropout", type=float, default=0.1)
@@ -180,6 +185,27 @@ def main():
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
     eps = args.label_smoothing
     tt_id = GROUP_ID["tt"]
+
+    # per-event loss weight: tt upweighting and/or matching the organizers' background mixture
+    wvec = torch.ones(len(ytr), device=device)
+    if args.mixture == "official":
+        is_bkg = ytr < 0.5
+        nb = int(is_bkg.sum())
+        shares = {}
+        for name, target in OFFICIAL_MIXTURE.items():
+            sel = is_bkg & (gtr == GROUP_ID[name])
+            n_k = int(sel.sum())
+            if n_k == 0:
+                print(f"  WARNING: no {name} events in the training split; its {target:.0%} share is dropped")
+                continue
+            w_k = target * nb / n_k          # so group k carries `target` of the background weight
+            wvec[sel] = w_k
+            shares[name] = dict(n=n_k, cache_frac=n_k / nb, weight=w_k)
+        print("  official-mixture loss weights: " + ", ".join(
+            f"{k} {v['cache_frac']:.3f}->{OFFICIAL_MIXTURE[k]:.2f} (x{v['weight']:.3f})"
+            for k, v in shares.items()))
+    if args.tt_weight != 1.0:
+        wvec[gtr == tt_id] *= args.tt_weight
     # binary HH-vs-background score: identity for the 1-logit head, log-odds for the 4-class head
     score = (lambda z: z) if args.n_classes == 1 else binary_score
 
@@ -195,7 +221,7 @@ def main():
             xb, fb, yb, gb = Xtr[idx], Ftr[idx], ytr[idx], gtr[idx]
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 logit = train_model(xb, fb)
-            w = torch.where(gb == tt_id, torch.full_like(yb, args.tt_weight), torch.ones_like(yb))
+            w = wvec[idx]
             if args.n_classes > 1:
                 per = F.cross_entropy(logit.float(), target_cls[idx], reduction="none",
                                       label_smoothing=eps)
@@ -261,6 +287,7 @@ def main():
                    best_epoch=state["epoch"], val_auc=val_auc, val_per_group=val_pg, val_eff=val_eff,
                    train_fit=dict(auc=fit_auc, auc_tt=fit_tt, mean_abs_logit=float(np.abs(tr_logits).mean())),
                    eval_auc=eval_auc, eval_per_group=eval_pg, eval_eff=eval_eff,
+                   eval_auc_official=official_auc(eval_pg), val_auc_official=official_auc(val_pg),
                    history=history, train_meta=meta_tr)
     write_json(out_dir / "summary.json", summary)
 
@@ -281,7 +308,8 @@ def main():
             publish(args.tag, summary, args.n_classes)
 
     print("\n" + "=" * 66)
-    print(f"  {args.tag}: EVAL AUC = {eval_auc:.5f}   vs QCD {eval_pg.get('QCD', 0):.5f}  "
+    print(f"  {args.tag}: EVAL AUC = {eval_auc:.5f} (even thirds) | "
+          f"{official_auc(eval_pg):.5f} (official 9/36/55)   vs QCD {eval_pg.get('QCD', 0):.5f}  "
           f"vs tt {eval_pg.get('tt', 0):.5f}  vs Wjets {eval_pg.get('Wjets', 0):.5f}   params {n_params:,}")
     print("=" * 66, flush=True)
 

@@ -147,6 +147,26 @@ def pair_features(x: torch.Tensor, eps: float = 1e-8):
 
 # ------------------------------------------------------------------- metrics
 
+# The organizers' eval mixture (team/fpga/RESULTS-fpga.md): the background is
+# 9 % QCD / 36 % W+jets / 55 % tt, not the even thirds our caches use.
+OFFICIAL_MIXTURE = {"QCD": 0.09, "Wjets": 0.36, "tt": 0.55}
+
+
+def official_auc(per_group: dict) -> float:
+    """AUC against the organizers' background mixture, from the per-group AUCs.
+
+    This is an EXACT reweighting, not an approximation. For a fixed signal set the
+    Mann-Whitney AUC is P(s_sig > s_bkg), and for a background that is a mixture with
+    weights w_k that expands to sum_k w_k P(s_sig > s_bkg,k) = sum_k w_k AUC_k. Verified
+    on eval100k: the even-thirds pooled AUC equals (QCD+tt+W)/3 to 0.0e+00.
+
+    Returns nan if any group is missing.
+    """
+    try:
+        return float(sum(w * per_group[k] for k, w in OFFICIAL_MIXTURE.items()))
+    except KeyError:
+        return float("nan")
+
 def auc_report(logits: np.ndarray, y: np.ndarray, group: np.ndarray, title: str, quiet=False):
     """Same definitions as team/train.py::auc_report (overall AUC, AUC vs each
     background group = signal vs that group only, signal eff at fixed bkg rejection)."""
@@ -164,10 +184,12 @@ def auc_report(logits: np.ndarray, y: np.ndarray, group: np.ndarray, title: str,
     for rej in (0.99, 0.999):
         thr = np.quantile(bkg, rej)
         eff[str(rej)] = float((logits[sig] > thr).mean())
+    off = official_auc(per_group)
     if not quiet:
         print(f"\n=== {title} ===")
         print(f"  events: {len(y)}  signal: {int(sig.sum())}  background: {int((~sig).sum())}")
-        print(f"  BINARY AUC (signal vs all background): {auc:.5f}")
+        print(f"  BINARY AUC (signal vs all background): {auc:.5f}   [even thirds]")
+        print(f"  OFFICIAL-MIXTURE AUC (9% QCD / 36% W / 55% tt):  {off:.5f}")
         for name, v in per_group.items():
             print(f"    vs {name:<6s}: AUC {v:.5f}")
         for rej, v in eff.items():
