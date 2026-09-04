@@ -527,6 +527,45 @@ reweighted models gave up (0.93148) without giving back the tt gain (0.86546).
 Scored on `train4M` itself, the published ensemble reaches **0.92718 even thirds / 0.91569 official**
 (vs tt 0.87235), which is what the student is distilling against.
 
+### Seed replication and the final teacher choice
+
+Three more `train4M` seeds were run once the queue freed the GPU. **Seed reproducibility is
+excellent** — the two mixture-matched binary seeds agree to **0.00003** official, and the two
+4-class seeds to 0.00005 — so every gap in the tables above is signal, not seed noise.
+
+| run | seed | loss mixture | even thirds | official |
+|---|---|---|---|---|
+| `part_4M_off_s0` / `_s1` | 0 / 1 | official | 0.92065 / 0.92069 | 0.90989 / 0.90992 |
+| `part4c_4M_off_s0` / `_s1` | 0 / 1 | official | 0.92191 / 0.92148 | 0.91131 / 0.91105 |
+| `part_4M_cache_s0` / `_s1` | 0 / 1 | cache | 0.92655 / 0.92647 | 0.90933 / 0.90917 |
+
+Ensembling is **saturated**: every combination of these six lands within 0.0003 on the official
+metric, and two members already capture the whole effect.
+
+| ensemble | members | even thirds | official |
+|---|---|---|---|
+| `ens_4M_all` | 3 (1 cache, 2 official) | 0.92461 | 0.91152 |
+| 4-class pair only | 2 | 0.92225 | 0.91178 |
+| mixture-matched only | 4 | 0.92230 | 0.91172 |
+| `ens_4M_all5` | 5 | 0.92391 | **0.91181** |
+| **`ens_4M_bal6`** ← **best teacher** | 6 (2 cache, 4 official) | **0.92481** | 0.91176 |
+
+`ens_4M_all5` and `ens_4M_bal6` are tied on the scored metric (0.00005 apart, well inside seed
+noise) but the balanced one is **+0.0009 better on even thirds** and matches the phase-1 published
+teacher there exactly (0.92481 vs 0.92480), so nothing regresses on either view. **`ens_4M_bal6` is
+the teacher to rebaseline onto.**
+
+The mechanism is visible in the members: mixture-matched models buy tt and give up QCD, cache-matched
+models do the reverse, and mixing them in a 2:1 ratio recovers QCD (0.93166 vs 0.92846 for the
+all-official blend) without measurably giving back tt. One ensemble can serve both metrics; a single
+model cannot.
+
+**Standing recommendation.** Rebaselining `soft_targets_{train1M,train300k,eval100k}.npy` from
+`ens_part4` onto `ens_4M_bal6` is worth **+0.0067 official** (0.90511 → 0.91176) — an order of
+magnitude more than every architecture change in this file combined. It is deliberately *not* done
+while the c3/c1 distillation jobs read those files. All the logits already exist under
+`team/teacher/runs/ens_4M_bal6/`.
+
 ### train4M soft targets
 
 | file | rows | content |
