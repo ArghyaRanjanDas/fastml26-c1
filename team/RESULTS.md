@@ -1186,6 +1186,20 @@ the `beta0` penalty. Calibration, since it is not obvious: the unregularized d=1
 at 2.36M EBOPs, and `beta0 = 1e-5` puts 24 loss units against a BCE of ~1.8 — it crushes the
 model to 29k EBOPs and 0.858 val AUC in five epochs. **The useful range is 1e-7 to 3e-6.**
 
+## Slide paragraph
+
+> The DeepSet student treats the 16 PUPPI candidates independently, so nothing in it can
+> represent a *relation* between two of them — and tt̄, our weakest background, is exactly
+> where the difference between "four b-jets" and "a W and a top" lives in the relations.
+> We built the attention student the FPGA literature says is affordable (arXiv:2510.24784:
+> 16 particles, one head, no positional encoding, HGQ2) and measured what the encoder block
+> is worth by removing only it: **official-mixture AUC 0.858 → 0.881, and vs tt̄ 0.773 → 0.810,
+> for 3,073 weights.** Two blocks and the ParT-ensemble teacher take it to **0.888 / 0.824**
+> at 5,233 weights, within 0.017 of a 5.3-million-parameter teacher. And because HGQ2 learns
+> a bit width per parameter during training and hls4ml carries those widths into the
+> generated C++, the conversion is **bit-exact — max |keras − HLS| = 0.0** — so unlike the
+> DeepSet lane there is no closure loss to pay for: the quantized AUC *is* the FPGA AUC.
+
 ## Reproduce
 
 ```bash
