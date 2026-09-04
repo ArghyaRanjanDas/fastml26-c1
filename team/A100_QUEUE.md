@@ -317,7 +317,7 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
 > vs even thirds), so a `train4M` row is not a clean A/B against a `train1M` row.
 > </details>
 
-### c3-3 — QAT at the chosen beta, selected on the official mixture  `[3e-6 + 1e-6 done — both MISS the bar; the requested betas are all too strong]`
+### c3-3 — QAT at the chosen beta, selected on the official mixture  `[3 betas done, all MISS; the d=16 seed cannot clear the bar inside the SLR budget — d=24 run launched]`
 
 > **c3 update 2026-09-04 01:10 — the betas in this block are too strong on `train1M`; use
 > `3e-7` and `1e-7`.** EBOPs decay is driven by *gradient steps*, not epochs, and train1M has
@@ -379,7 +379,8 @@ bit-exact to HLS, so whatever this job returns is the FPGA number.
 > | *float seed `a_d16_b2_t2`* | ~2,360,000 | 0.91267 | **0.88825** | 0.94047 | 0.82365 | 0.97389 |
 > | **1e-6** | 33,565 | 0.88793 | **0.85532** | 0.92597 | 0.77036 | 0.96746 |
 > | **3e-6** | 5,932 | 0.87722 | **0.83898** | 0.92241 | 0.74018 | 0.96907 |
-> | *3e-7 (added by me, epoch 24/35)* | ~143,000 | — | ~0.8696 so far | — | — | — |
+> | **3e-7** *(added by me)* | 130,729 | 0.89753 | **0.86932** | 0.92946 | 0.79446 | 0.96867 |
+> | *1e-7 (added by me, epoch 11/35)* | falling through 1.04M | — | 0.87564 so far | — | — | — |
 >
 > **Number to beat was official 0.87957. Neither finished beta comes close** — 1e-6 misses by 0.024
 > and 3e-6 by 0.041. The selection fix works (best epoch is now chosen after the ramp, and these
@@ -407,3 +408,33 @@ bit-exact to HLS, so whatever this job returns is the FPGA number.
 >
 > Runtime note: each beta took **~432 min**, not the estimated 4 h, because I was running 3-5 jobs
 > concurrently on the A100. That is my scheduling, not the job.
+
+> **hh4b [3e-7 done — and this settles the lane's central question]**
+>
+> With three settled points plus the float model, the AUC-vs-EBOPs curve for the **d=16 seed
+> (5,233 weights)** is:
+>
+> | EBOPs | official |
+> |---|---|
+> | 5,932 | 0.83898 |
+> | 33,565 | 0.85532 |
+> | 130,729 | 0.86932 |
+> | ~2,360,000 *(float, unregularized)* | 0.88825 |
+>
+> Near the top the curve costs **0.0151 official per decade of EBOPs**. Extrapolating to the
+> **~350k EBOPs** one-SLR budget gives **≈ 0.87576**, which **misses the 0.87957 bar by 0.0038**.
+>
+> **So the conclusion is not "pick a better beta" — it is that this seed cannot win.** No beta clears
+> the bar inside the budget: to reach 0.87957 the d=16 student needs roughly **600k-1M EBOPs**, which
+> is 2-3x over the SLR budget. beta only moves you along this curve; it cannot lift it.
+>
+> **What lifts it is the seed, and c3-2 already found the right one.** `a_d24_b2` (10,817 weights)
+> starts **+0.00913** above `a_d16_b2_t2` in float (official 0.89738 vs 0.88825). Sliding the same
+> measured slope down from there predicts **≈ 0.885 at 350k EBOPs — clearing the bar by +0.005**.
+>
+> **Launched:** `q3_d24_b16e-8` — `a_d24_b2` warm start, `--d 24 --blocks 2`, **beta0 1.6e-7** (the
+> value my EBOPs ∝ beta^-1.38 fit puts at ~350k EBOPs), 35 epochs. This is the run I think actually
+> delivers the lane's deliverable; it is my addition, not from the block above.
+>
+> `1e-7` on the d=16 seed is still running and will pin the curve's top end near ~400k EBOPs, which
+> also tests the extrapolation that this recommendation rests on.
