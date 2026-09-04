@@ -102,7 +102,7 @@ too strong. The useful range is 1e-7 to 3e-6. The warm
 start converges fast (epoch 1 is already at val AUC 0.9026), so 40 epochs is generous;
 drop to `--epochs 20` if the queue is busy. Report the (beta, AUC, EBOPs, vs-tt) table.
 
-### c3-2 — how far the float attention student goes with more capacity + time  `[running]`
+### c3-2 — how far the float attention student goes with more capacity + time  `[done: yes, widening pays — d=24 is the QAT seed]`
 
 The A10 sweep at 30 epochs gave 0.90818 (d=16, 3,073 w), 0.91138 (d=16 ×2 blocks,
 5,233 w) and 0.91267 (d=32, 10,033 w) against a **teacher at 0.91515**. This asks
@@ -124,6 +124,34 @@ git add -A runs && git commit -m "c3-2: float capacity/length sweep on A100" && 
 
 Expected: ~40 min each, **~2.5 h total**. The seed-1 repeat of `a_d16_b2` is there to
 size the run-to-run spread, so the table above can be read honestly.
+
+> **hh4b [done]** — all four ran. **Answer: yes, capacity pays, so do not stop widening — but stop
+> at d=24, not d=32.** Number to beat was 0.91267; every row clears it.
+>
+> | run | weights | even thirds | **official 9/36/55** | vs QCD | vs tt | vs W |
+> |---|---|---|---|---|---|---|
+> | `a_d16_b2_t2` *(the 30-epoch seed, for reference)* | 5,233 | 0.91267 | 0.88825 | 0.94047 | 0.82365 | 0.97389 |
+> | `a_d16_b2_e60` | 5,233 | 0.91555 | 0.89215 | 0.94205 | 0.83003 | 0.97459 |
+> | `a_d16_b2_s1` *(seed repeat)* | 5,233 | 0.91534 | 0.89211 | 0.94126 | 0.82994 | 0.97480 |
+> | `a_d24_b2` | 10,817 | 0.91943 | **0.89738** | 0.94434 | 0.83876 | 0.97520 |
+> | **`a_d32_b2`** | 18,449 | **0.91986** | **0.89793** | 0.94461 | 0.83960 | 0.97536 |
+>
+> **Run-to-run spread is 0.00022 even-thirds and 0.00004 official**, so every gap below is 10-100x
+> the noise and the table can be read at face value.
+>
+> Decomposing the +0.0097 official gain over the 30-epoch seed:
+> * **more epochs alone (30 -> 60), same 5,233 weights: +0.0039** — free in hardware, take it unconditionally;
+> * **d=16 -> d=24: +0.0053** — the real win, at 2.1x the weights;
+> * **d=24 -> d=32: +0.0006** — 1.7x more weights for almost nothing. Diminishing hard.
+>
+> **Recommendation: `a_d24_b2` is the QAT seed.** It captures +0.0091 of the available +0.0097 at
+> **59 % of d=32's weights**, and on the official mixture it is 0.00055 behind d=32 — a fifth of what
+> the extra 7,632 weights would have to justify through the EBOPs budget. d=32 is the better float
+> model and the wrong thing to quantize.
+>
+> Context: `a_d32_b2` at 0.91986 sits **0.0049** under the train1M teacher `ens_part4` (0.92480) on
+> even thirds, down from a 0.0121 gap at d=16/30 epochs. On the official mixture the students are
+> 0.0136 under the new `ens_4M_all` teacher (0.91152), so there is still headroom and it is all in tt.
 
 **Note added 2026-09-04 after the ParT teacher landed** — `team/teacher/soft_targets_*.npy`
 now holds `ens_part4` (0.92480 / tt 0.85181) where it held `ds_big_s0` (0.91515 / tt 0.82612)
