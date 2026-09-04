@@ -317,7 +317,7 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
 > vs even thirds), so a `train4M` row is not a clean A/B against a `train1M` row.
 > </details>
 
-### c3-3 — QAT at the chosen beta, selected on the official mixture  `[running: 3e-6 + 1e-6]`
+### c3-3 — QAT at the chosen beta, selected on the official mixture  `[3e-6 + 1e-6 done — both MISS the bar; the requested betas are all too strong]`
 
 > **c3 update 2026-09-04 01:10 — the betas in this block are too strong on `train1M`; use
 > `3e-7` and `1e-7`.** EBOPs decay is driven by *gradient steps*, not epochs, and train1M has
@@ -371,3 +371,39 @@ its even-thirds number is 0.9077). The float attention students sit at 0.88084 (
 3,073 w) and **0.88825 (`a_d16_b2_t2`, 5,233 w — the seed this job warm-starts from; same
 shape as `a_d16_b2` but distilled from the new ParT-ensemble teacher, +0.0032)**, and QAT is
 bit-exact to HLS, so whatever this job returns is the FPGA number.
+
+> **hh4b [3e-6 and 1e-6 done — and the headline is that the requested beta range cannot win]**
+>
+> | beta0 | EBOPs (settled) | even thirds | **official 9/36/55** | vs QCD | vs tt | vs W |
+> |---|---|---|---|---|---|---|
+> | *float seed `a_d16_b2_t2`* | ~2,360,000 | 0.91267 | **0.88825** | 0.94047 | 0.82365 | 0.97389 |
+> | **1e-6** | 33,565 | 0.88793 | **0.85532** | 0.92597 | 0.77036 | 0.96746 |
+> | **3e-6** | 5,932 | 0.87722 | **0.83898** | 0.92241 | 0.74018 | 0.96907 |
+> | *3e-7 (added by me, epoch 24/35)* | ~143,000 | — | ~0.8696 so far | — | — | — |
+>
+> **Number to beat was official 0.87957. Neither finished beta comes close** — 1e-6 misses by 0.024
+> and 3e-6 by 0.041. The selection fix works (best epoch is now chosen after the ramp, and these
+> checkpoints really are the compressed ones), so this is a real result about beta, not an artifact.
+>
+> **Why: every beta in this block over-compresses by an order of magnitude.** The job wants the point
+> that fits one SLR at **~350k EBOPs**. Measured settled values: `3e-6 -> 5.9k`, `1e-6 -> 33.6k`,
+> `3e-7 -> ~143k`. A log-log fit gives **EBOPs ∝ beta^-1.38**, so **~350k EBOPs needs beta ≈ 1.6e-7**
+> — between 6x and 19x weaker than anything requested. `1e-5`, the third beta in the block, would
+> land near 1k EBOPs and is not worth running; I have not started it.
+>
+> The AUC cost is steep and roughly linear in log-EBOPs over this range: from the float 2.36M down to
+> 33.6k costs **0.033 official**, and down to 5.9k costs **0.049**. Extrapolating the same slope to
+> ~350k EBOPs predicts official ≈ **0.874-0.878** — i.e. the bar at 0.87957 is right at the edge of
+> what this 5,233-weight student can do under an EBOPs penalty, and may need the bigger seed.
+>
+> **Actions taken:** `3e-7` is running (24/35) and **`1e-7` is now launched** to bracket the design
+> point from above. Between them the curve will cover 143k and roughly 400k EBOPs, which is what the
+> job actually needs to choose an operating point.
+>
+> **Suggestion:** c3-2 concluded that **`a_d24_b2` (10,817 weights, official 0.89738)** is the seed to
+> quantize, not `a_d16_b2_t2` (5,233 weights, official 0.88825). It starts **+0.0091 higher**, which
+> is 4x the margin by which 1e-6 misses the bar after quantization. Warm-starting c3-3 from `a_d24_b2`
+> at beta ≈ 1.6e-7 is the run most likely to clear 0.87957 at ~350k EBOPs.
+>
+> Runtime note: each beta took **~432 min**, not the estimated 4 h, because I was running 3-5 jobs
+> concurrently on the A100. That is my scheduling, not the job.
