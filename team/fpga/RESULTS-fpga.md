@@ -122,3 +122,26 @@ prints these whenever the sample carries a `group` array (0 QCD, 1 HH, 2 tt, 3 W
 | **model_2777_rich @ `tsat_16_6`** | 0.9077 → **0.9062** | 0.9349 → **0.9356** | 0.8085 → **0.8074** | 0.9743 → **0.9703** |
 
 Fixed point costs ≤ 0.006 on any background; the tt gain of the rich student (+0.055) survives quantization intact.
+
+## tt-weighted rich student, and the metric that actually counts (2026-09-03 21:05 PDT)
+
+`model_2777_rich_tt` = `rich_1M_w2dis` (tt ×2 + disagreement-weighted KD, train1M; float eval 0.9086), same `tsat_16_6` flow:
+
+| design | AUC keras → HLS (sample) | vs QCD | vs tt | vs W+jets | LUT | FF | DSP | latency |
+|---|---|---|---|---|---|---|---|---|
+| rich `tsat_16_6` (plain KD) | 0.9077 → 0.9062 | 0.9356 | 0.8074 | 0.9703 | 253,154 | 176,866 | 1,692 | 81–84 cyc |
+| **rich_tt `tsat_16_6`** (tt ×2 + disagreement) | 0.9073 → 0.9048 | 0.9281 | **0.8141** | 0.9674 | 252,894 | 176,373 | 1,651 | 81–84 cyc |
+
+On our even-thirds eval slice the tt-weighted student is −0.0014. **But the organizers' eval parquet is not even thirds.**
+Row count of `C1_HH4b/eval` (2,102,226 rows): HH 1,000,384; QCD 100,482; W+jets 400,812 (WJetsToLNu 200,281 + WJetsToQQ 200,531);
+tt 600,548 (hadronic 200,327 / semi-leptonic 200,110 / leptonic 200,111). Background fractions: **QCD 9 %, W+jets 36 %, tt 55 %.**
+A pooled "HH vs all backgrounds" AUC is the background-fraction-weighted mean of the per-background AUCs, so on the official mixture:
+
+| design | official-mixture AUC (0.09·QCD + 0.36·W + 0.55·tt) |
+|---|---|
+| model_2041 `tsat_16_6` | 0.09·0.9207 + 0.36·0.9635 + 0.55·0.7533 = **0.844** |
+| rich `tsat_16_6` | 0.09·0.9356 + 0.36·0.9703 + 0.55·0.8074 = **0.878** |
+| rich_tt `tsat_16_6` | 0.09·0.9281 + 0.36·0.9674 + 0.55·0.8141 = **0.880** |
+
+So on the metric that will be scored, tt is 55 % of the weight, the tt-weighted student is the better one (+0.002), and the
+right training/selection mixture is the official one, not even thirds. (Training-set counts: HH 9.0M, QCD 0.90M, W+jets 1.8M+, tt still counting.)
