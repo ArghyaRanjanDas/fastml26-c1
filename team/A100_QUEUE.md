@@ -186,7 +186,7 @@ done
 
 ---
 
-### c1-2 — best student on train4M when c2's cache lands  `[blocked: train4M is not on the AF pod]`
+### c1-2 — best student on train4M when c2's cache lands  `[done: 0.91022 even-thirds / 0.88913 official, beats 0.90901]`
 
 The 2,041-param student gained +0.0031 going from 600k to 2M events, which is about what
 the entire rho sweep was worth and costs nothing in hardware. The rich student has not been
@@ -202,7 +202,30 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
   --gpu-batches --epochs 30 --train-tag train4M_s --eval-tag eval100k_s
 ```
 
-> **hh4b [blocked]** — `team/cache/train4M/` **does not exist on the AF pod** and cannot be
+> **hh4b [done]** — **even-thirds AUC 0.91022**, official-mixture **0.88913**, 2,777 params,
+> vs QCD 0.93095 / vs tt 0.82497 / vs W 0.97476. **Beats the 0.90901 bar by +0.00121.**
+>
+> Three things about how it was run, none of them optional:
+> 1. **`make_student_cache.py --tag train4M` was NOT run**, and must not be: c2 built `train4M`
+>    *already enriched* (X 16×11, F 19), while that script expects the raw 16×5 / F-11 layout and
+>    would try to derive channels that are already present. Instead `team/cache/train4M_s` is a
+>    directory of symlinks to `train4M`'s arrays plus a meta carrying `derived_from: train4M` and
+>    the `extra_*` keys copied from `train1M_s`. `load_cache("train4M_s")` returns
+>    (7,569,258, 16, 11) / (…, 19) as expected.
+> 2. **The teacher is not the one the log prints.** `distill.py` prints the provenance from
+>    `soft_targets_meta.json`, which still describes the train1M teacher `ens_part4`. The logits
+>    actually consumed are `soft_targets_train4M_s.npy` — the new **`ens_4M_all`** ensemble
+>    (official 0.91569 on `train4M`, vs 0.90511 for `ens_part4`). Only the printed label is stale;
+>    the training used the better teacher. Worth making `distill.py` read a per-tag meta.
+> 3. `team/cache/train4M` is a symlink to `/work/users/das214/fastml26/team/cache/train4M`, where
+>    the 5.6 GB transfer landed.
+>
+> *(Earlier blocker, resolved: the cache was absent from the pod and could not be rebuilt here,
+> since the raw parquet is not mounted. It was copied over on 2026-09-04.)*
+>
+> <details><summary>original blocker text</summary>
+>
+> `team/cache/train4M/` **does not exist on the AF pod** and cannot be
 > built here. RESULTS.md says it is 5.6 GB "built on the CPU box"; `team/cache/` is gitignored,
 > so it does not travel through git, and I searched `/work/users/das214`, `/work/projects`,
 > `/depot/cms/{users,private/users}/das214` and `/home/das214` for `train4M*` — nothing.
@@ -218,6 +241,7 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
 > teacher in `team/teacher/` reads the 5/11 layout, so retraining it on `train4M` needs an input
 > adapter, not just a `--train-tag` change. The mixture also differs (QCD 25.3 / tt 37.4 / W 37.4
 > vs even thirds), so a `train4M` row is not a clean A/B against a `train1M` row.
+> </details>
 
 ### c3-3 — QAT at the chosen beta, selected on the official mixture  `[running: 3e-6 + 1e-6]`
 
