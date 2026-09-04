@@ -1,0 +1,109 @@
+{
+  "run": "s300_b1e-7",
+  "model": "attn_student",
+  "cfg": {
+    "n_particles": 16,
+    "n_channels": 11,
+    "n_event": 11,
+    "d": 16,
+    "heads": 1,
+    "blocks": 1,
+    "mlp_ratio": 2,
+    "head_dim": 16,
+    "pool": "meanmax",
+    "residual": true
+  },
+  "quantized": true,
+  "beta0": 1e-07,
+  "init_from": "a_d16",
+  "rich": true,
+  "keras_params": 26063,
+  "params": 3074,
+  "temperature": 2.0,
+  "alpha": 0.7,
+  "distill": true,
+  "epochs": 10,
+  "batch_size": 1024,
+  "lr": 0.001,
+  "seed": 0,
+  "train_tag": "train300k",
+  "eval_tag": "eval100k",
+  "eval_auc": 0.9028313058999999,
+  "val_auc": 0.9041636058666552,
+  "per_background_auc": {
+    "QCD": 0.9360652878528785,
+    "tt": 0.8011743488434885,
+    "Wjets": 0.971252228355433
+  },
+  "signal_eff": {
+    "0.99": 0.23643,
+    "0.999": 0.05965
+  },
+  "train_seconds": 1377.652304862626,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 1.8142410516738892,
+      "val_auc": 0.8931652341300326,
+      "ebops": 2365363.0
+    },
+    {
+      "epoch": 2,
+      "loss": 1.835726261138916,
+      "val_auc": 0.8997512245755805,
+      "ebops": 2107927.0
+    },
+    {
+      "epoch": 3,
+      "loss": 1.884764313697815,
+      "val_auc": 0.9018828459321839,
+      "ebops": 1858215.0
+    },
+    {
+      "epoch": 4,
+      "loss": 1.9247695207595825,
+      "val_auc": 0.9021347593850052,
+      "ebops": 1678930.0
+    },
+    {
+      "epoch": 5,
+      "loss": 1.9080817699432373,
+      "val_auc": 0.9031510449967938,
+      "ebops": 1535705.0
+    },
+    {
+      "epoch": 6,
+      "loss": 1.8931504487991333,
+      "val_auc": 0.9036485891784335,
+      "ebops": 1430442.0
+    },
+    {
+      "epoch": 7,
+      "loss": 1.885928988456726,
+      "val_auc": 0.9036820007357921,
+      "ebops": 1403045.0
+    },
+    {
+      "epoch": 8,
+      "loss": 1.8829684257507324,
+      "val_auc": 0.9035982873832191,
+      "ebops": 1378564.0
+    },
+    {
+      "epoch": 9,
+      "loss": 1.8808388710021973,
+      "val_auc": 0.9037696255118688,
+      "ebops": 1369031.0
+    },
+    {
+      "epoch": 10,
+      "loss": 1.8796011209487915,
+      "val_auc": 0.9041636058666552,
+      "ebops": 1368564.0
+    }
+  ],
+  "ebops_error": "'module' object is not callable",
+  "ebops": 1368564.0,
+  "ebops_final": 1368564.0,
+  "official_auc": 0.8745425699786337
+}

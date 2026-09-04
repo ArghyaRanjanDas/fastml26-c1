@@ -55,10 +55,15 @@ class ValAUC(keras.callbacks.Callback):
     """Per-epoch AUC on the held-out slice of the training cache; keeps the best
     weights in memory (Keras' ModelCheckpoint cannot see a metric we compute here)."""
 
-    def __init__(self, x, y, ebops=False):
+    def __init__(self, x, y, ebops=False, select_from=1, group=None):
         super().__init__()
-        self.x, self.y, self.ebops = x, y, ebops
-        self.best, self.best_w, self.history = -1.0, None, []
+        self.x, self.y, self.ebops, self.group = x, y, ebops, group
+        # Under an EBOPs penalty the first epochs have both the highest AUC and the
+        # highest bit widths, so selecting on AUC over the whole run would hand back a
+        # model that never paid the penalty. Only epochs from `select_from` on -- i.e.
+        # after beta has finished ramping -- are eligible.
+        self.select_from = select_from
+        self.best, self.best_w, self.best_ebops, self.history = -1.0, None, None, []
 
     def on_epoch_end(self, epoch, logs=None):
         from sklearn.metrics import roc_auc_score
@@ -66,15 +71,28 @@ class ValAUC(keras.callbacks.Callback):
         s = np.asarray(self.model.predict(self.x, batch_size=16384, verbose=0)).ravel()
         auc = float(roc_auc_score(self.y, s))
         rec = dict(epoch=epoch + 1, loss=float((logs or {}).get("loss", np.nan)), val_auc=auc)
+        if self.group is not None:
+            sig, pg = self.y == 1, {}
+            for gid, name in sorted(attn_data.GROUP_NAME.items()):
+                if name == "HH_4b":
+                    continue
+                sel = sig | ((self.y == 0) & (self.group == gid))
+                pg[name] = float(roc_auc_score(self.y[sel], s[sel]))
+            rec["val_official"] = attn_data.official_auc(pg)
+            # model selection follows the scored metric, not the even-thirds one
+            auc = rec["val_official"]
         if self.ebops:
             rec["ebops"] = float((logs or {}).get("ebops", np.nan))
         flag = ""
-        if auc > self.best:
+        if auc > self.best and epoch + 1 >= self.select_from:
             self.best, flag = auc, "  *"
+            self.best_ebops = rec.get("ebops")
             self.best_w = [np.array(w) for w in self.model.get_weights()]
         self.history.append(rec)
         eb = f"  ebops={rec['ebops']:.0f}" if self.ebops and np.isfinite(rec.get("ebops", np.nan)) else ""
-        print(f"  epoch {epoch+1:3d}  loss={rec['loss']:.4f}  val_auc={auc:.5f}{eb}{flag}", flush=True)
+        off = f"  val_off={rec['val_official']:.5f}" if rec.get("val_official") else ""
+        print(f"  epoch {epoch+1:3d}  loss={rec['loss']:.4f}  val_auc={rec['val_auc']:.5f}"
+              f"{off}{eb}{flag}", flush=True)
 
 
 def main():
@@ -164,7 +182,8 @@ def main():
     model.compile(optimizer=keras.optimizers.AdamW(sched, weight_decay=1e-4),
                   loss=make_loss(args.temperature, args.alpha))
 
-    cb_val = ValAUC([Xtr[va], Ftr[va]], ytr[va], ebops=args.quantized)
+    cb_val = ValAUC([Xtr[va], Ftr[va]], ytr[va], group=gtr[va], ebops=args.quantized,
+                    select_from=(args.beta_ramp + 1) if (args.quantized and args.beta0) else 1)
     callbacks = [cb_val]
     if args.quantized:
         from hgq.utils.sugar import FreeEBOPs
@@ -195,14 +214,15 @@ def main():
                    teacher_prefix=args.teacher,
                    epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, seed=args.seed,
                    train_tag=args.train_tag, eval_tag=args.eval_tag,
-                   eval_auc=auc, val_auc=cb_val.best, per_background_auc=per_group,
+                   eval_auc=auc, official_auc=attn_data.official_auc(per_group),
+                   val_auc=cb_val.best, per_background_auc=per_group,
                    signal_eff=eff, train_seconds=train_s, history=cb_val.history)
     if args.quantized:
-        from hgq.utils.sugar import ebops
-        try:
-            summary["ebops"] = float(ebops(model))
-        except Exception as e:                                   # pragma: no cover
-            summary["ebops_error"] = str(e)
+        # EBOPs of the checkpoint actually kept. `hgq.utils.sugar.ebops` is a module,
+        # not a function -- the number comes from the FreeEBOPs callback, which writes
+        # `logs['ebops']` at each epoch end.
+        summary["ebops"] = cb_val.best_ebops
+        summary["ebops_final"] = cb_val.history[-1].get("ebops") if cb_val.history else None
     (RUNS / f"{args.tag}_summary.json").write_text(json.dumps(summary, indent=2))
     np.save(RUNS / f"{args.tag}_eval_scores.npy", ev)
     print(f"\n  {args.tag}: EVAL AUC = {auc:.5f}  ({nsyn:,} synthesized weights, "

@@ -24,6 +24,20 @@ CACHE = TEAM / "cache"
 MEMO = Path(__file__).resolve().parent / "cache"
 GROUP_NAME = {0: "QCD", 1: "HH_4b", 2: "tt", 3: "Wjets"}   # data.py:GROUP_ID
 
+# The organizers' eval parquet is HH 1.00M vs QCD 100k / W+jets 401k / tt 601k, i.e.
+# background fractions 9 / 36 / 55 %, not the even thirds our caches sample. Pooled AUC
+# over a background mixture is the fraction-weighted mean of the per-background AUCs
+# (AUC = P(s_sig > s_bkg), and the background is a mixture), so the scored number is
+# tt-dominated. Report both; select on `official`.
+OFFICIAL_MIX = {"QCD": 0.09, "Wjets": 0.36, "tt": 0.55}
+
+
+def official_auc(per_group: dict) -> float | None:
+    """0.09*QCD + 0.36*W+jets + 0.55*tt from a per-background AUC dict."""
+    if not per_group or any(k not in per_group for k in OFFICIAL_MIX):
+        return None
+    return float(sum(w * per_group[k] for k, w in OFFICIAL_MIX.items()))
+
 
 def _rich_path(tag: str) -> Path:
     return MEMO / f"{tag}_rich_X.npy"
@@ -102,6 +116,9 @@ def auc_report(scores, y, group, title):
             continue
         per_group[name] = float(roc_auc_score(y[sel], scores[sel]))
         print(f"    vs {name:<6s}: AUC {per_group[name]:.5f}  ({int((y[sel] == 0).sum())} bkg events)")
+    off = official_auc(per_group)
+    if off is not None:
+        print(f"  OFFICIAL-MIXTURE AUC (9% QCD / 36% W / 55% tt): {off:.5f}")
     eff, bkg = {}, scores[y == 0]
     for rej in (0.99, 0.999):
         thr = np.quantile(bkg, rej)

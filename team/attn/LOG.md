@@ -138,3 +138,25 @@ on the A10 and the long QAT runs go to the A100 queue.
   a broken repo.
 * Python buffers stdout when it is redirected, so a job that has not finished its first epoch
   looks like a job that died. `PYTHONUNBUFFERED=1`.
+
+## Step 4/5 — where the lane stands, and what the numbers mean
+
+**The metric changed mid-lane.** The organizers' eval parquet is HH 1.00M vs QCD 100k /
+W+jets 401k / tt̄ 601k, so the scored pooled AUC is `0.09*QCD + 0.36*W + 0.55*tt̄`, not the
+even-thirds mixture our caches sample. `attn_data.official_auc()` computes it, every summary
+records it, and `train_attn.py` now selects the best epoch on it. It flatters this lane: the
+attention gain is concentrated in tt̄, which carries 55 % of the weight, so `a_d16_b0 → a_d16`
+is +0.018 on even thirds and **+0.023 on the scored metric**.
+
+**A second selection bug, worth stating because it is easy to repeat.** Under an EBOPs
+penalty the earliest epochs have both the highest AUC and the widest bit widths, so
+"keep the best-val-AUC epoch" returns a checkpoint that never paid the penalty — one beta=3e-6
+run kept epoch 2 at 1.79M EBOPs while the run itself ended at 900k. Selection now only starts
+after beta has finished ramping (`--beta-ramp`).
+
+**hls4ml with `Strategy=distributed_arithmetic`, `ReuseFactor=1`, no manual precision** —
+validated end to end on a short quantized run: convert → `compile()` → predict on
+`team/export/eval_sample.npz`, **max |keras − hls| = 0.0**, overall and per-background AUCs
+identical to every printed digit (the closure sample's rows are matched back to
+`cache/eval100k` to recover the background labels: 100 % matched, 2,486 HH / 850 QCD /
+808 tt̄ / 856 W+jets, the same split the DeepSet lane reports).
