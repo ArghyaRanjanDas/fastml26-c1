@@ -1118,26 +1118,33 @@ particles (16, 11) -> EinsumDense d, relu           (= c1's Conv1D k=1 phi, shar
    + event (11)    -> concat -> Dense 16 relu -> Dense 1
 ```
 
-| run | change | params | **AUC (eval)** | vs QCD | vs tt | vs W+jets | eff@99% |
+| run | change | params | **official** | even-3rds | vs QCD | vs tt | vs W+jets |
 |---|---|---|---|---|---|---|---|
-| `a_d16_b0` | **attention off** (0 blocks) | 913 | 0.89067 | 0.9289 | 0.7726 | 0.9706 | 0.178 |
-| `a_d8` | d = 8 | 1,129 | 0.89651 | 0.9320 | 0.7866 | 0.9709 | 0.202 |
-| `a_d16_nomlp` | no per-token MLP | 2,001 | 0.90272 | 0.9376 | 0.7979 | 0.9726 | 0.224 |
-| `a_d16_base` | 5 base channels only | 2,977 | 0.90119 | 0.9310 | 0.8016 | 0.9709 | 0.218 |
-| **`a_d16`** | **the candidate** | **3,073** | **0.90818** | 0.9403 | **0.8100** | 0.9742 | 0.249 |
-| `a_d16_nokd` | no distillation | 3,073 | 0.90648 | 0.9390 | 0.8072 | 0.9732 | 0.245 |
-| `a_d16_h2` | 2 heads | 3,073 | 0.90864 | 0.9396 | 0.8136 | 0.9728 | 0.243 |
-| `a_d16_b2` | 2 blocks | 5,233 | 0.91138 | 0.9422 | 0.8168 | 0.9752 | 0.256 |
-| `a_d32` | d = 32 | 10,033 | 0.91267 | 0.9429 | 0.8198 | 0.9753 | 0.262 |
-| *reference:* `B1e_16p_1M` | DeepSet student | 2,041 | 0.88687 | 0.9303 | 0.7587 | 0.9716 | — |
-| *reference:* `model_2777_rich` | rich DeepSet, synthesized | 2,777 | 0.9077 | 0.9349 | 0.8085 | 0.9743 | — |
-| *reference:* `ds_big_s0` | the teacher these rows distil from | 72,717 | 0.91515 | 0.9436 | 0.8261 | 0.9757 | 0.272 |
+| `a_d16_b0` | **attention off** (0 blocks) | 913 | 0.85792 | 0.89067 | 0.9289 | 0.7726 | 0.9706 |
+| `a_d8` | d = 8 | 1,129 | 0.86606 | 0.89651 | 0.9320 | 0.7866 | 0.9709 |
+| `a_d16_nomlp` | no per-token MLP | 2,001 | 0.87341 | 0.90272 | 0.9376 | 0.7979 | 0.9726 |
+| `a_d16_base` | 5 base channels only | 2,977 | 0.87422 | 0.90119 | 0.9310 | 0.8016 | 0.9709 |
+| `a_d16_nokd` | no distillation | 3,073 | 0.87883 | 0.90648 | 0.9390 | 0.8072 | 0.9732 |
+| **`a_d16`** | **the candidate** | **3,073** | **0.88084** | 0.90818 | 0.9403 | 0.8100 | 0.9742 |
+| `a_d16_h2` | 2 heads | 3,073 | 0.88223 | 0.90864 | 0.9396 | 0.8136 | 0.9728 |
+| `a_d16_b2` | 2 blocks | 5,233 | 0.88508 | 0.91138 | 0.9422 | 0.8168 | 0.9752 |
+| `a_d32` | d = 32 | 10,033 | 0.88687 | 0.91267 | 0.9429 | 0.8198 | 0.9753 |
+| *reference:* `B1e_16p_1M` | DeepSet student | 2,041 | 0.85080 | 0.88687 | 0.9303 | 0.7587 | 0.9716 |
+| *reference:* `model_2777_rich` | rich DeepSet, synthesized | 2,777 | 0.87957 | 0.9077 | 0.9349 | 0.8085 | 0.9743 |
+| *reference:* `ds_big_s0` | the teacher these rows distil from | 72,717 | 0.89053 | 0.91515 | 0.9436 | 0.8261 | 0.9757 |
+| *reference:* `ens_part4` | the newer ParT-ensemble teacher | 5,336,052 | 0.90510 | 0.92480 | 0.9464 | 0.8518 | 0.9762 |
+
+**official** = `0.09*QCD + 0.36*W+jets + 0.55*tt`, the organizers' background mixture
+(eval parquet: QCD 100k / W+jets 401k / tt̄ 601k). **even-3rds** is the number every other
+table in this file uses, kept so the rows are comparable. Models are selected on *official*.
 
 ## What the ablations say
 
-**1. Attention is worth +0.0175 overall and +0.037 vs tt̄.** `a_d16_b0` → `a_d16` holds the
-embedding, the pooling, the head, the inputs and the training recipe fixed and turns only the
-encoder block off: 0.89067 → 0.90818, tt̄ 0.7726 → 0.8100. That is a direct answer to the
+**1. Attention is worth +0.023 on the scored metric and +0.037 vs tt̄.** `a_d16_b0` → `a_d16`
+holds the embedding, the pooling, the head, the inputs and the training recipe fixed and turns
+only the encoder block off: official 0.85792 → 0.88084 (even-thirds 0.89067 → 0.90818),
+tt̄ 0.7726 → 0.8100. The gain is larger on the official mixture than on even thirds
+(+0.023 vs +0.018) because it is concentrated in tt̄, which carries 55 % of the weight. That is a direct answer to the
 question c2's stage-4 study left open ("the 0.826 − 0.759 gap is not yet evidence about
 relational information") — measured on the student, relational information is worth about as
 much as the six rich per-candidate channels, and **the two are additive**: attention alone
@@ -1150,8 +1157,10 @@ half the weights and a quarter of the attention arithmetic for the same AUC.
 the DeepSet student. The attention student gets most of the teacher's advantage from its own
 architecture rather than from the soft targets — it can represent what the teacher knows.
 
-**4. `a_d16` recovers 97 % of the teacher's margin over the DeepSet student**
-((0.90818 − 0.88687) / (0.91515 − 0.88687)) with 3,073 weights against the teacher's 72,717.
+**4. `a_d16` recovers 75 % of the teacher's margin over the DeepSet student on the scored
+metric** ((0.88084 − 0.85080) / (0.89053 − 0.85080)) with 3,073 weights against the teacher's
+72,717 — and 97 % of it on even thirds. It also **beats the DeepSet lane's best synthesized
+design** (`model_2777_rich`, 0.87957) by +0.0013 before quantization, at 3,073 weights vs 2,777.
 
 ## The quantization story is different in this lane: it is bit-exact
 
