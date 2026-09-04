@@ -137,7 +137,7 @@ pair to difference against.
 
 ---
 
-### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[3e-7 + 1e-6 done; 3e-6 running — SAVED CHECKPOINTS ARE UNUSABLE, see note]`
+### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[done: only beta 3e-7 clears the bar as saved; see the selection note]`
 
 On the A10 (shared with screening runs) 12 epochs of HGQ2 QAT got EBOPs 853k -> 360k
 (2.4x, which is the DSP lever) but only AUC 0.89044 — below the 0.895 bar and below the
@@ -169,6 +169,24 @@ done
 > |---|---|---|---|
 > | 3e-7 | epoch 9 — val 0.89863, **350,255 EBOPs** | epoch 40 — val 0.89783, **87,377 EBOPs** | **4.0x fewer EBOPs for −0.0008** |
 > | 1e-6 | epoch 1 — val 0.89410, **850,826 EBOPs** | epoch 40 — val 0.89042, **27,174 EBOPs** | **31x fewer EBOPs for −0.0037** |
+> | 3e-6 | epoch 1 — val 0.89412, **853,894 EBOPs** | epoch 40 — val 0.88157, **11,365 EBOPs** | **75x fewer EBOPs for −0.0126** |
+>
+> All three betas are now in and the pattern is complete: **at beta0 >= 1e-6 the selection always
+> returns epoch 1**, i.e. the unregularized warm start, so two of the three saved models sit at the
+> ~853k EBOPs baseline the job set out to beat and **fail its own bar as saved**. Only 3e-7 clears
+> it (0.89809 @ 347k).
+>
+> **The scientific result the sweep actually produced** — the AUC-vs-EBOPs curve, read off the final
+> epochs, which is what the job wanted:
+>
+> | EBOPs | val AUC | vs the 853k baseline |
+> |---|---|---|
+> | 87,377 (beta 3e-7) | 0.89783 | **9.8x smaller**, −0.0008 |
+> | 27,174 (beta 1e-6) | 0.89042 | 31x smaller, −0.0037 |
+> | 11,365 (beta 3e-6) | 0.88157 | 75x smaller, −0.0126 |
+>
+> So **beta 3e-7 at ~87k EBOPs is the operating point**: an order of magnitude below the baseline at
+> essentially no AUC cost, far past the "materially below 853k" bar. Those weights were not saved.
 >
 > At beta0=1e-6 the selected epoch is **epoch 1** — essentially the unregularized warm start. Its
 > saved EBOPs (849,350 after calibration) is the **853k baseline this job set out to beat**, so as
@@ -187,6 +205,7 @@ done
 > Reported numbers for the record (selected checkpoints, eval slice):
 > * beta 3e-7 — eval AUC **0.89809**, official-mixture **0.86982**, vs QCD 0.92937 / tt 0.79375 / W 0.97116, EBOPs 347,049.
 > * beta 1e-6 — eval AUC **0.89351**, official-mixture **0.86588**, vs QCD 0.92134 / tt 0.78765 / W 0.97153, EBOPs 849,350.
+> * beta 3e-6 — eval AUC **0.89353**, official-mixture **0.86667**, vs QCD 0.91974 / tt 0.78943 / W 0.97141, EBOPs 853,700.
 >
 > **hh4b [beta 3e-7 done]** — **eval AUC 0.89809**, vs QCD 0.92937, vs tt 0.79375, vs W 0.97116,
 > **EBOPs 347,049** after calibration. That **clears the 0.895 bar** and improves on the A10's
