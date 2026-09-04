@@ -125,3 +125,16 @@ guess had already gone into the A100 queue; corrected there in `A100_QUEUE.md`.)
 Practical note: HGQ2 QAT costs ~7 min/epoch on 2M events against ~40 s for the float model
 — every weight and activation carries its own trainable bit width — so the float sweep runs
 on the A10 and the long QAT runs go to the A100 queue.
+
+## Housekeeping notes (things that cost time here)
+
+* **`ps -ef | grep ...` returns nothing in this pod** even for processes that plainly exist;
+  `pgrep -af` works. Two background batches were relaunched on the false belief that the
+  first had died, which put 16 training jobs and 14.8 GB on a GPU budgeted at 8 GB and made
+  everything crawl. Check with `pgrep -af train_attn` (and `nvidia-smi
+  --query-compute-apps=pid,used_memory --format=csv` for who owns the GPU) before relaunching.
+* **`git` here is shared with c1 and c2 in the same working copy**, so `.git/index.lock`
+  collisions and non-fast-forward pushes are normal; pull-merge and retry rather than assume
+  a broken repo.
+* Python buffers stdout when it is redirected, so a job that has not finished its first epoch
+  looks like a job that died. `PYTHONUNBUFFERED=1`.
