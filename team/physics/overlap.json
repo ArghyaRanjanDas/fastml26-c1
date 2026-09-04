@@ -1,0 +1,65 @@
+[
+ {
+  "process": "HH_4b",
+  "group": "HH_4b",
+  "train_kept": 4000000,
+  "train_requested": 4000000,
+  "eval_kept": 100000,
+  "train_internal_duplicates": 0,
+  "overlap": 0
+ },
+ {
+  "process": "QCD_HT250toInf",
+  "group": "QCD",
+  "train_kept": 902592,
+  "train_requested": 1333333,
+  "eval_kept": 33333,
+  "train_internal_duplicates": 0,
+  "overlap": 0
+ },
+ {
+  "process": "tt0123j_5f_ckm_LO_MLM_hadronic",
+  "group": "tt",
+  "train_kept": 444444,
+  "train_requested": 444444,
+  "eval_kept": 11111,
+  "train_internal_duplicates": 0,
+  "overlap": 0
+ },
+ {
+  "process": "tt0123j_5f_ckm_LO_MLM_leptonic",
+  "group": "tt",
+  "train_kept": 444444,
+  "train_requested": 444444,
+  "eval_kept": 11111,
+  "train_internal_duplicates": 0,
+  "overlap": 0
+ },
+ {
+  "process": "tt0123j_5f_ckm_LO_MLM_semiLeptonic",
+  "group": "tt",
+  "train_kept": 444444,
+  "train_requested": 444444,
+  "eval_kept": 11111,
+  "train_internal_duplicates": 0,
+  "overlap": 0
+ },
+ {
+  "process": "WJetsToLNu_13TeV-madgraphMLM-pythia8",
+  "group": "Wjets",
+  "train_kept": 666667,
+  "train_requested": 666667,
+  "eval_kept": 16667,
+  "train_internal_duplicates": 0,
+  "overlap": 0
+ },
+ {
+  "process": "WJetsToQQ_13TeV-madgraphMLM-pythia8",
+  "group": "Wjets",
+  "train_kept": 666667,
+  "train_requested": 666667,
+  "eval_kept": 16667,
+  "train_internal_duplicates": 0,
+  "overlap": 0
+ }
+]
