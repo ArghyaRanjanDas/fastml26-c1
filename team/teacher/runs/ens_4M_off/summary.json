@@ -1,0 +1,36 @@
+{
+  "run": "ens_4M_off",
+  "model": "ensemble",
+  "params": 2668221,
+  "members": {
+    "part_4M_off_s0": {
+      "eval_auc": 0.9206496692499999,
+      "eval_auc_tt": 0.8651505839558395,
+      "model": "part",
+      "params": 1334013
+    },
+    "part4c_4M_off_s0": {
+      "eval_auc": 0.9219108896499999,
+      "eval_auc_tt": 0.8673473416734166,
+      "model": "part",
+      "params": 1334208
+    }
+  },
+  "eval_auc": 0.9220128724000001,
+  "eval_per_group": {
+    "QCD": 0.9229259288092881,
+    "tt": 0.8673004528545285,
+    "Wjets": 0.9758106215875681
+  },
+  "eval_eff": {
+    "0.99": 0.32321,
+    "0.999": 0.10233
+  },
+  "eval_auc_official": 0.9113704064343512,
+  "tags": [
+    "train4M",
+    "train1M",
+    "train300k",
+    "eval100k"
+  ]
+}

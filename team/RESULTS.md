@@ -473,6 +473,79 @@ These are the targets to use for a **student with a 4-class head**, which is wor
 confusion matrix says the tt-vs-HH boundary is where the loss is, and a student trained to name the
 background gets a gradient that says so.
 
+## Phase 2b — retraining the teacher on `train4M`, and matching the official mixture
+
+`team/cache/train4M` (c2's build, 7,569,258 events: 4.00M signal, 3.57M background) arrived on the
+AF pod. Its layout is the **enriched** one (X 16×11, F 19), and the enriched builder appends its
+derived channels *after* the originals, so `X[..., :5]` and `F[:, :11]` are byte-identical to the
+raw layout — verified on `train1M` vs `train1M_s`. The teacher therefore reads it directly by
+slicing, deriving its own channels as always. Its background is **QCD 25.3 % / tt 37.4 % / W 37.4 %**
+(QCD ran out at 902,592 events), not even thirds.
+
+That mixture gap is why `--mixture official` exists: it reweights the background loss so the
+teacher effectively trains against **9 % QCD / 36 % W / 55 % tt**. Measured weights on `train4M`:
+QCD ×0.356, W ×0.964, tt ×1.473.
+
+All runs: 20 epochs, batch 2048, seed 0, otherwise `part_s0`'s settings. Eval slice unchanged.
+
+| teacher | train cache | loss mixture | even thirds | **official 9/36/55** | vs QCD | vs tt | vs W+jets |
+|---|---|---|---|---|---|---|---|
+| `ens_part4` *(phase-1 published)* | train1M | cache (even 3rds) | 0.92480 | 0.90511 | 0.94636 | 0.85181 | 0.97622 |
+| `ens_part4_4c` *(phase-2 best)* | train1M | cache | **0.92511** | 0.90542 | 0.94676 | 0.85223 | 0.97634 |
+| `part_4M_cache_s0` | train4M | cache (25/37/37) | **0.92655** | 0.90933 | 0.94286 | 0.85910 | 0.97769 |
+| `part_4M_off_s0` | train4M | official | 0.92065 | 0.90989 | 0.92145 | 0.86515 | 0.97535 |
+| `part4c_4M_off_s0` *(4-class)* | train4M | official | 0.92191 | 0.91131 | 0.92278 | 0.86735 | 0.97560 |
+| `ens_4M_off` | train4M | official ×2 | 0.92201 | 0.91137 | 0.92293 | 0.86730 | 0.97581 |
+| **`ens_4M_all`** ← **published for train4M** | train4M | mixed | 0.92461 | **0.91152** | 0.93148 | 0.86546 | 0.97689 |
+
+**More data is worth far more than any architecture change we tried.** Going 2M → 7.6M events moves
+the official-mixture AUC **+0.0061** (0.90511 → 0.91152), against +0.0003 for the whole four-seed
+ensemble and +0.0007 for the 4-class head. The teacher was not architecture-limited; it was
+data-limited, and the earlier conclusion that "the ParT-lite configuration is saturated" was true
+only at 2M events.
+
+**Mixture-matched training does exactly what it should, and only helps the metric that counts.**
+At matched data and architecture, `--mixture official` versus the cache mixture is:
+
+| | even thirds | official | vs QCD | vs tt |
+|---|---|---|---|---|
+| `part_4M_cache_s0` | 0.92655 | 0.90933 | 0.94286 | 0.85910 |
+| `part_4M_off_s0` | 0.92065 | 0.90989 | 0.92145 | 0.86515 |
+| Δ (official − cache) | **−0.00590** | **+0.00056** | −0.02141 | **+0.00605** |
+
+It trades 0.021 of QCD for 0.006 of tt. On even thirds that is a clear loss; on the official
+mixture, where tt carries 55 % and QCD only 9 %, it is a small win. The effect is real but **much
+smaller than the data effect**, and it is the single place where the two metrics genuinely disagree
+about which model is better — `part_4M_cache_s0` wins on even thirds by 0.0059 and loses on official
+by 0.0006.
+
+**The ensemble resolves that disagreement**: `ens_4M_all` averages all three and is best on the
+official metric (0.91152) while staying within 0.0002 of the phase-1 ensemble on even thirds
+(0.92461 vs 0.92480). Mixing mixture-matched and cache-matched members recovers the QCD the
+reweighted models gave up (0.93148) without giving back the tt gain (0.86546).
+
+Scored on `train4M` itself, the published ensemble reaches **0.92718 even thirds / 0.91569 official**
+(vs tt 0.87235), which is what the student is distilling against.
+
+### train4M soft targets
+
+| file | rows | content |
+|---|---|---|
+| `team/teacher/soft_targets_train4M.npy` | 7,569,258 | float32 binary logits from `ens_4M_all`, `train4M` row order |
+| `team/teacher/soft_targets_train4M_s.npy` | 7,569,258 | identical copy, so `--train-tag train4M_s` resolves |
+| `soft_targets4_train4M{,_s}.npy` | 7,569,258 × 4 | 4-class logits from `part4c_4M_off_s0` — **not in git** (115 MB each, over GitHub's 100 MB limit); they live at `/work/users/das214/fastml26/team/teacher_targets/` on the pod |
+| `team/teacher/soft_targets_train4M_meta.json` | — | members, both AUCs, per-group, usage |
+
+**The phase-1 `soft_targets_{train1M,train300k,eval100k}.npy` are untouched** — verified byte-identical
+to `origin/main` after this work. They are still `ens_part4`, and the c3/c1 distillation jobs reading
+them keep a stable teacher. A rebaseline onto `ens_4M_all` is worth **+0.0064 official** and should
+happen once those lanes are quiescent; the logits for every cache tag already exist under
+`team/teacher/runs/ens_4M_all/`.
+
+*Caveat on `train4M` comparisons.* Its background mixture differs from `train1M`, so a `train4M` row
+is not a clean A/B against a `train1M` row on even thirds — which is precisely why the official
+column is the one to read here. The eval slice is identical in every row of this file.
+
 ## Reproduce
 
 ```bash

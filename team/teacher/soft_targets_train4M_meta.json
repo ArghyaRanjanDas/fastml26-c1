@@ -1,0 +1,22 @@
+{
+  "source_run": "ens_4M_all",
+  "members": [
+    "part_4M_off_s0",
+    "part_4M_cache_s0",
+    "part4c_4M_off_s0"
+  ],
+  "model": "ensemble (mean of member binary logits)",
+  "train_cache": "train4M",
+  "n_rows": 7569258,
+  "eval_auc_even_thirds": 0.9271784377060652,
+  "eval_auc_official": 0.9156873872621911,
+  "eval_per_group": {
+    "QCD": 0.9341687040039963,
+    "tt": 0.8723541278167216,
+    "Wjets": 0.9772706488962069
+  },
+  "label_smoothing": 0.05,
+  "mixture_note": "two of the three members were trained with --mixture official (background loss reweighted to 9% QCD / 36% W / 55% tt)",
+  "format": "float32 binary teacher logits, one per team/cache/train4M row, same order; *_s.npy is an identical copy for the train4M_s tag",
+  "usage": "student score = sigmoid(logit); for KD at temperature T use sigmoid(logit / T)"
+}

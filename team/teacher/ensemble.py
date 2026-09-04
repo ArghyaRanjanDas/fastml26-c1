@@ -10,7 +10,7 @@ import json
 
 import numpy as np
 
-from common import CACHE_TAGS, HERE, RUNS, binary_score, load_cache, auc_report, quick_auc, write_json
+from common import CACHE_TAGS, HERE, RUNS, binary_score, load_cache, auc_report, official_auc, quick_auc, write_json
 
 
 def main():
@@ -19,6 +19,8 @@ def main():
     ap.add_argument("--eval-tag", default="eval100k")
     ap.add_argument("--publish", action="store_true")
     ap.add_argument("--name", default=None)
+    ap.add_argument("--tags", nargs="+", default=list(CACHE_TAGS),
+                    help="cache tags to average and (with --publish) write out")
     args = ap.parse_args()
     name = args.name or "ens_" + "+".join(args.runs)
 
@@ -30,7 +32,7 @@ def main():
         return binary_score(z) if z.ndim == 2 else z
 
     per_cache = {}
-    for tag in CACHE_TAGS:
+    for tag in args.tags:
         stack = np.stack([member_score(r, tag) for r in args.runs])
         per_cache[tag] = stack.mean(0).astype(np.float32)
 
@@ -44,13 +46,15 @@ def main():
         label_smoothing = ms["args"]["label_smoothing"]
         print(f"  {r:<24s} eval AUC {a:.5f}  vs tt {att:.5f}")
     auc, pg, eff = auc_report(per_cache[args.eval_tag], yev, gev, f"ensemble of {len(args.runs)} ({name})")
+    print(f"  official-mixture AUC: {official_auc(pg):.5f}")
 
     out = RUNS / name
     out.mkdir(parents=True, exist_ok=True)
     for tag, logits in per_cache.items():
         np.save(out / f"logits_{tag}.npy", logits)
     summary = dict(run=name, model="ensemble", params=n_params, members=members,
-                   eval_auc=auc, eval_per_group=pg, eval_eff=eff)
+                   eval_auc=auc, eval_per_group=pg, eval_eff=eff,
+                   eval_auc_official=official_auc(pg), tags=list(args.tags))
     write_json(out / "summary.json", summary)
     if args.publish:
         for tag, logits in per_cache.items():

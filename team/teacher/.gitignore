@@ -3,3 +3,9 @@ runs/*/*.pt
 runs/*/logits_*.npy
 *.log
 __pycache__/
+
+# 4-class train4M logits are 115 MB each -- over GitHub's 100 MB limit.
+# They live at /work/users/das214/fastml26/team/teacher_targets/ instead (same pod path
+# the caches are copied to). The 30 MB binary train4M targets ARE committed.
+soft_targets4_train4M.npy
+soft_targets4_train4M_s.npy
