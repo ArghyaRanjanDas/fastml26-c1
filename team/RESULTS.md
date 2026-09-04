@@ -986,3 +986,98 @@ per background) → `write()` → tar into `fpga/projects/<tag>.tar.gz`, with
 per-layer widths; overriding them would throw away what QAT trained).
 
 **Not done this round:** the 4-class softmax head. Flagged, not attempted.
+
+---
+
+<!-- c3:attention:start -->
+# Attention student (c3)
+
+The DeepSet student pools each candidate independently, so **nothing in it can represent a
+relation between two candidates** — and tt̄ is exactly the background where the difference
+between "four b-jets" and "a W and a top" lives in the relations. This lane asks whether a
+multi-head-attention student small enough for the trigger recovers that, following
+arXiv:2510.24784 (Laatu et al., Oct 2025): 16 particles, one head, no positional encoding,
+trained with **HGQ2** (per-parameter learned bit widths) and converted with hls4ml.
+
+Same data, same eval slice and same distillation recipe as every row above; `train1M`
+(2M events), 30 epochs, AdamW + cosine, KD at T=2 mixed with BCE at alpha 0.7. Inputs are
+c2's 11 per-candidate channels (5 base + 6 `rich`) and the 11 event features. **params =
+kernels + biases, i.e. what gets synthesized.**
+
+```
+particles (16, 11) -> EinsumDense d, relu           (= c1's Conv1D k=1 phi, shared over candidates)
+                   -> [ MHA(1 head, key_dim = d) + residual
+                        EinsumDense d -> 2d relu -> d + residual ] x blocks
+                   -> mean-pool || max-pool
+   + event (11)    -> concat -> Dense 16 relu -> Dense 1
+```
+
+| run | change | params | **AUC (eval)** | vs QCD | vs tt | vs W+jets | eff@99% |
+|---|---|---|---|---|---|---|---|
+| `a_d16_b0` | **attention off** (0 blocks) | 913 | 0.89067 | 0.9289 | 0.7726 | 0.9706 | 0.178 |
+| `a_d8` | d = 8 | 1,129 | 0.89651 | 0.9320 | 0.7866 | 0.9709 | 0.202 |
+| `a_d16_nomlp` | no per-token MLP | 2,001 | 0.90272 | 0.9376 | 0.7979 | 0.9726 | 0.224 |
+| `a_d16_base` | 5 base channels only | 2,977 | 0.90119 | 0.9310 | 0.8016 | 0.9709 | 0.218 |
+| **`a_d16`** | **the candidate** | **3,073** | **0.90818** | 0.9403 | **0.8100** | 0.9742 | 0.249 |
+| `a_d16_nokd` | no distillation | 3,073 | 0.90648 | 0.9390 | 0.8072 | 0.9732 | 0.245 |
+| `a_d16_h2` | 2 heads | 3,073 | 0.90864 | 0.9396 | 0.8136 | 0.9728 | 0.243 |
+| `a_d16_b2` | 2 blocks | 5,233 | 0.91138 | 0.9422 | 0.8168 | 0.9752 | 0.256 |
+| `a_d32` | d = 32 | 10,033 | 0.91267 | 0.9429 | 0.8198 | 0.9753 | 0.262 |
+| *reference:* `B1e_16p_1M` | DeepSet student | 2,041 | 0.88687 | 0.9303 | 0.7587 | 0.9716 | — |
+| *reference:* `model_2777_rich` | rich DeepSet, synthesized | 2,777 | 0.9077 | 0.9349 | 0.8085 | 0.9743 | — |
+| *reference:* `ds_big_s0` | the teacher these rows distil from | 72,717 | 0.91515 | 0.9436 | 0.8261 | 0.9757 | 0.272 |
+
+## What the ablations say
+
+**1. Attention is worth +0.0175 overall and +0.037 vs tt̄.** `a_d16_b0` → `a_d16` holds the
+embedding, the pooling, the head, the inputs and the training recipe fixed and turns only the
+encoder block off: 0.89067 → 0.90818, tt̄ 0.7726 → 0.8100. That is a direct answer to the
+question c2's stage-4 study left open ("the 0.826 − 0.759 gap is not yet evidence about
+relational information") — measured on the student, relational information is worth about as
+much as the six rich per-candidate channels, and **the two are additive**: attention alone
+(`a_d16_base`, 0.90119) and rich alone (`a_d16_b0`, 0.89067) are both below the pair (0.90818).
+
+**2. Depth beats width.** `a_d16_b2` (2 blocks, 5,233 params) ≈ `a_d32` (1 block, 10,033) —
+half the weights and a quarter of the attention arithmetic for the same AUC.
+
+**3. Distillation is worth +0.0017 here** (`a_d16_nokd` → `a_d16`), far less than it was for
+the DeepSet student. The attention student gets most of the teacher's advantage from its own
+architecture rather than from the soft targets — it can represent what the teacher knows.
+
+**4. `a_d16` recovers 97 % of the teacher's margin over the DeepSet student**
+((0.90818 − 0.88687) / (0.91515 − 0.88687)) with 3,073 weights against the teacher's 72,717.
+
+## The quantization story is different in this lane: it is bit-exact
+
+The DeepSet lane's open item was closure — `ap_fixed<16,6>` cost 0.077 AUC to integer
+overflow, and `<22,10>` was needed to close. **That failure mode does not exist here.** HGQ2
+learns a bit width per parameter and per activation during training, and hls4ml's bit-exact
+pass carries those widths into the generated C++, so keras and HLS agree exactly:
+
+```
+closure on team/export/eval_sample.npz (5,000 real eval events, Vitis, xcu200, 5 ns)
+  max |keras - hls| = 0.0     AUC keras = AUC hls to all printed digits
+```
+
+So the quantized AUC **is** the FPGA AUC; there is no closure budget to reserve. What has to
+be managed instead is **EBOPs** (HGQ's differentiable proxy for the multiplier bill), through
+the `beta0` penalty. Calibration, since it is not obvious: the unregularized d=16 model sits
+at 2.36M EBOPs, and `beta0 = 1e-5` puts 24 loss units against a BCE of ~1.8 — it crushes the
+model to 29k EBOPs and 0.858 val AUC in five epochs. **The useful range is 1e-7 to 3e-6.**
+
+## Reproduce
+
+```bash
+cd team/attn
+KERAS_BACKEND=torch ~/hlsenv/bin/python train_attn.py --tag a_d16 --d 16 --train-tag train1M --epochs 30
+KERAS_BACKEND=torch ~/hlsenv/bin/python train_attn.py --tag q_d16 --quantized --init-from a_d16 --beta0 1e-6 --beta-ramp 5 --epochs 30
+KERAS_BACKEND=torch ~/hlsenv/bin/python synth_attn.py --run q_d16 --write   # closure + fpga/projects/q_d16.tar.gz
+```
+
+Environment: `~/hlsenv` + `pip install hgq2 da4ml` (**not** `hgq`, which is HGQ v1 and needs
+Keras 2), Keras 3 on the torch backend so the same model trains on the A10 and converts for
+HLS. Two hls4ml 1.3.0 quirks had to be worked around and are documented in `team/attn/LOG.md`:
+its handler registry keys `QMultiHeadAttention` at its pre-0.2 module path (`hgq2_compat.py`
+re-keys it), and `io_stream` rejects heterogeneous quantization, so the lane uses `io_parallel`.
+
+<!-- c3:attention:end -->
