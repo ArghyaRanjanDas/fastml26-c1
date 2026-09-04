@@ -1,0 +1,25 @@
+{
+  "run": "s300_b1e-7",
+  "part": "xcu200-fsgd2104-2-e",
+  "clock": 5.0,
+  "io_type": "io_parallel",
+  "strategy": "distributed_arithmetic",
+  "reuse": 1,
+  "n_sample": 5000,
+  "max_abs_diff": 0.0,
+  "mean_abs_diff": 0.0,
+  "auc_keras_sample": 0.901995646583477,
+  "auc_hls_sample": 0.901995646583477,
+  "per_background_auc_keras_sample": {
+    "QCD": 0.9328008612938337,
+    "tt": 0.7967260221597381,
+    "Wjets": 0.9707730111051796
+  },
+  "per_background_auc_hls_sample": {
+    "QCD": 0.9328008612938337,
+    "tt": 0.7967260221597381,
+    "Wjets": 0.9707730111051796
+  },
+  "project": "/home/jovyan/fastml26-hackathon/team/fpga/projects/s300_b1e-7.tar.gz",
+  "project_mb": 0.697065
+}

@@ -145,3 +145,41 @@ A pooled "HH vs all backgrounds" AUC is the background-fraction-weighted mean of
 
 So on the metric that will be scored, tt is 55 % of the weight, the tt-weighted student is the better one (+0.002), and the
 right training/selection mixture is the official one, not even thirds. (Training-set counts: HH 9.0M, QCD 0.90M, W+jets 1.8M+, tt still counting.)
+
+<!-- c3:attention:start -->
+## Attention student (c3) — projects awaiting synthesis
+
+Built with `team/attn/synth_attn.py` (hls4ml 1.3.0 + HGQ2, Vitis backend,
+`xcu200-fsgd2104-2-e`, 5 ns, **io_parallel**, `Strategy=distributed_arithmetic`,
+`ReuseFactor=1`, **no manual precision** — HGQ2 carries a learned bit width per parameter
+and per activation, and hls4ml's bit-exact pass puts them in the generated C++).
+
+`io_stream` is not an option for this lane: hls4ml raises `NotImplementedError:
+Heterogenous quantization for activations is only supported with IOType=io_parallel`,
+and heterogeneous widths are the whole point of HGQ.
+
+**Closure is not an open item here — it is exact.** On the same 5,000-event sample the
+DeepSet lane uses (`team/export/eval_sample.npz`, rows matched back to `cache/eval100k`
+to recover the background labels, 100 % matched):
+
+| tag | project | EBOPs | max abs diff keras−HLS | AUC official (keras = HLS) | AUC even-3rds | vs QCD | vs tt | vs W+jets |
+|---|---|---|---|---|---|---|---|---|
+| `s300_b1e-7` | `projects/s300_b1e-7.tar.gz` (0.7 MB) | 1.37M | **0.0** | 0.8710 | 0.9020 | 0.9328 | 0.7967 | 0.9708 |
+
+<sub>The per-background AUCs above are on the 5,000-event closure sample (850 QCD / 808 tt̄ /
+856 W+jets), so they are noisier than the `eval100k` numbers in RESULTS.md; on the full
+eval slice this checkpoint is official 0.87454 / even-thirds 0.90283.</sub>
+
+**What I need from this one:** it is a deliberately under-regularized calibration point, not
+the final design — a short 10-epoch QAT on `train300k` at `beta0=1e-7`. Its purpose is to
+measure **LUT (and FF/DSP/latency) per EBOP** for this architecture, so the EBOPs target for
+the long runs can be set from a measured number instead of the ~1:1 LUT:EBOPs implied by
+arXiv:2510.24784. If it does not fit, that is expected and still the answer I need. The
+production runs (`train1M`, 35 epochs, stronger beta, selected on the official mixture) are
+training on the A10 and in the A100 queue as job `c3-3`, and will land at a much lower EBOPs
+for the same architecture — so **please report the numbers even if it blows the SLR budget.**
+
+Architecture (3,073 synthesized weights): particles (16 × 11 channels) → shared EinsumDense
+d=16 relu → 1-head MultiHeadAttention(key_dim 16) + residual → EinsumDense 16→32 relu →32→16
++ residual → mean-pool ‖ max-pool → concat 11 event features → Dense 16 relu → Dense 1.
+<!-- c3:attention:end -->
