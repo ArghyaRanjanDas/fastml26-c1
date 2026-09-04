@@ -116,6 +116,16 @@ git add -A runs && git commit -m "c3-2: float capacity/length sweep on A100" && 
 Expected: ~40 min each, **~2.5 h total**. The seed-1 repeat of `a_d16_b2` is there to
 size the run-to-run spread, so the table above can be read honestly.
 
+**Note added 2026-09-04 after the ParT teacher landed** — `team/teacher/soft_targets_*.npy`
+now holds `ens_part4` (0.92480 / tt 0.85181) where it held `ds_big_s0` (0.91515 / tt 0.82612)
+when the numbers above were measured, and `train_attn.py` reads whatever that file currently
+is. So c3-1 and c3-2 are distilling from the **new** teacher and their AUCs are **not**
+comparable to the 0.91267 quoted above; expect them to come out higher for that reason
+alone. Report them anyway — that is the number we want — but say which teacher they used
+(the run summary now records `teacher` / `teacher_auc`, and the training log prints it).
+The A10 is re-running `a_d16` and `a_d16_b2` against the new teacher so there is a matched
+pair to difference against.
+
 ---
 
 ### c1-1 — HGQ2 QAT, longer, best-epoch checkpointed  `[running]`
