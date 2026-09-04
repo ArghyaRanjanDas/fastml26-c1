@@ -1224,3 +1224,86 @@ its handler registry keys `QMultiHeadAttention` at its pre-0.2 module path (`hgq
 re-keys it), and `io_stream` rejects heterogeneous quantization, so the lane uses `io_parallel`.
 
 <!-- c3:attention:end -->
+
+---
+
+# The scored metric is not even thirds — it is 55% tt
+
+The organizers' eval parquet is **not** the even three-way background split our caches use.
+Counted directly from `~/hack-data/C1_HH4b/eval` (independent of the number that was passed
+to me, and it agrees):
+
+| | events | fraction of background |
+|---|---|---|
+| HH_4b (signal) | 1,000,384 | — |
+| QCD_HT250toInf | 100,482 | **0.0912** |
+| WJetsToLNu + WJetsToQQ | 400,812 | **0.3638** |
+| tt hadronic + leptonic + semiLeptonic | 600,548 | **0.5450** |
+| background total | 1,101,842 | |
+
+Pooled AUC is *exactly* the fraction-weighted mean of the per-background AUCs: AUC =
+P(s_sig > s_bkg), the background is a mixture, so P = Σ_g w_g·P(s_sig > s_bkg,g). Verified
+empirically as well as algebraically — resampling our eval slice to the official mixture
+gives 0.88552 against a weighted sum of 0.88484, agreeing to resampling noise. So the
+official number is recoverable from per-group AUCs measured on *any* mixture, and
+`train.py` now prints it next to the even-thirds number for every run:
+
+**official AUC = 0.0912·QCD + 0.3638·W + 0.5450·tt**
+
+## This re-ranks the models
+
+The scored metric is 55% tt, our weakest background, so models that traded QCD/W for tt were
+being undervalued. Selecting on the official metric instead of even-thirds:
+
+| run | even-thirds | **official** | QCD | W | tt | rank move |
+|---|---|---|---|---|---|---|
+| `c2_canon3_wide` (c2) | 0.91726 | **0.89457** | 0.94361 | 0.97653 | 0.83165 | — |
+| `c2_canon3` (c2) | 0.91540 | 0.89228 | 0.94199 | 0.97636 | 0.82784 | — |
+| **`rich_1M_w2dis`** | 0.90864 | **0.88484** | 0.93578 | 0.97200 | 0.81814 | **+3** |
+| `rich_1M_ofmix` | 0.90776 | 0.88474 | 0.93214 | 0.97376 | 0.81739 | new |
+| `rkd_T2_a05` *(was the primary export)* | **0.90901** | 0.88284 | 0.94046 | 0.97469 | 0.81188 | **−3** |
+| `tt_w3` | 0.90294 | 0.87861 | 0.93003 | 0.96933 | 0.80946 | **+3** |
+| `tt_dis` | 0.90479 | 0.87824 | 0.93615 | 0.97279 | 0.80544 | −2 |
+
+**The model I had exported as primary is the wrong one.** `rkd_T2_a05` has the best
+even-thirds AUC and the *sixth* best official AUC; `rich_1M_w2dis` — the tt-weighted model I
+exported as a secondary candidate — is +0.0020 better on the scored metric.
+**`model_2777_rich_tt` is the primary from here.**
+
+And the earlier "tt upweighting is near zero-sum" conclusion was an artifact of the wrong
+metric: `tt_w3` looked *worse* than baseline under even-thirds (−0.0010) and is +0.0018
+better under the official one.
+
+## Re-running the tt experiments under the official metric (`train300k_s`, 30 epochs)
+
+`distill.py --mixture official` reweights background events by
+official_fraction/(1/3) — QCD ×0.274, W ×1.091, tt ×1.635 — so the loss is computed at the
+mixture that will be scored. Signal weight stays 1.
+
+| config | **official** | even-thirds | QCD | tt | W |
+|---|---|---|---|---|---|
+| baseline | 0.87685 | 0.90398 | 0.93626 | 0.80280 | 0.97288 |
+| tt ×2 + disagree *(old winner)* | 0.87947 | 0.90488 | 0.93437 | 0.80901 | 0.97126 |
+| official mixture | 0.88054 | 0.90276 | 0.92405 | 0.81218 | 0.97205 |
+| **official mixture + disagree** | **0.88185** | 0.90559 | 0.93070 | 0.81235 | 0.97371 |
+| **tt ×4 + disagree** | **0.88188** | 0.90565 | 0.93231 | 0.81459 | 0.97005 |
+| official mixture + tt ×2 + disagree | 0.87830 | 0.90364 | 0.93116 | 0.80519 | 0.97458 |
+| tt ×6 + disagree | 0.87861 | 0.90217 | 0.92724 | 0.80987 | 0.96941 |
+
+Training at the official mixture is worth **+0.0050** over the baseline and +0.0024 over the
+old even-thirds winner. There is a clear optimum in *effective* tt weight around 1.6–4×:
+plain mixture reweighting (×1.635) and tt ×4 land on the same number, while stacking them
+(×3.3 effective) and ×6 both fall back. Overshooting costs more on QCD/W than it recovers
+on tt, even at 55% tt.
+
+At 1M the two winners converge — `rich_1M_w2dis` 0.88484 and `rich_1M_ofmix` 0.88474 are
+tied — so the incumbent export stands, now for the right reason.
+
+## Note for c2
+
+`c2_canon3_wide` / `c2_canon3` are the best official-mixture models on the board (0.89457 /
+0.89228) on only 300k events, and they use the `_c3` feature set (31 event features: the dxy
+order statistics, dsig, lepton and charged-fraction variables). There is no `train1M_c3`
+builder in the repo. **If the `_c3` builder is published, the obvious next model is the `_c3`
+inputs at 1M under this training recipe** (distillation + official-mixture reweighting +
+disagreement weighting), which is worth roughly +0.005 on top of what those runs show.

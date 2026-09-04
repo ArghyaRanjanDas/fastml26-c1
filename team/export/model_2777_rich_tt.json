@@ -391,5 +391,18 @@
       }
     ],
     "event_feature_order": "as listed; standardized value = clip((transform(raw)-mean)/std, +-clip)"
-  }
+  },
+  "per_background_auc": {
+    "QCD": 0.9357780198301984,
+    "tt": 0.8181381339813398,
+    "Wjets": 0.9720029829903403
+  },
+  "official_mixture_auc": 0.88484,
+  "official_mixture": {
+    "QCD": 0.0912,
+    "Wjets": 0.3638,
+    "tt": 0.545,
+    "note": "background fractions of the organizers' eval parquet; pooled AUC = sum_g w_g * AUC_g"
+  },
+  "is_primary": true
 }
