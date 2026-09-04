@@ -27,7 +27,8 @@ from sklearn.metrics import roc_auc_score
 
 from data import load_cache, EVENT_FEATURES
 from models import DeepSetPlus, count_params
-from train import OUT_DIR, auc_report, predict, measure_latency, dims, set_seed
+from train import (OUT_DIR, auc_report, predict, measure_latency, dims, set_seed,
+                   OFFICIAL_MIX)
 
 
 def build_from_summary(summary: dict) -> DeepSetPlus:
@@ -76,6 +77,9 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--pool", default="mean", choices=["mean", "sum", "meanmax"])
     ap.add_argument("--gpu-batches", action="store_true")
+    ap.add_argument("--mixture", default="cache", choices=["cache", "official"],
+                    help="'official' reweights background events so the effective mixture "
+                         "matches the organizers' eval parquet (QCD .0912/W .3638/tt .5450)")
     ap.add_argument("--tt-weight", type=float, default=1.0,
                     help="multiply the hard-label term for tt events by this")
     ap.add_argument("--disagree-weight", action="store_true",
@@ -149,8 +153,17 @@ def main():
     tX = torch.from_numpy(Xtr[tr_idx][:, :npart]); tF = torch.from_numpy(Ftr[tr_idx])
     tY = torch.from_numpy(ytr[tr_idx]); tZ = torch.from_numpy(zt_tr[tr_idx])
     w = np.ones(len(tr_idx), dtype=np.float32)
+    if args.mixture == "official":
+        # the cache is an even three-way background split, so scale each group by
+        # official_fraction / (1/3). Signal weight stays 1, preserving the
+        # signal-to-background balance the model was tuned at.
+        gg = gtr[tr_idx]
+        for gid, name in ((0, "QCD"), (2, "tt"), (3, "Wjets")):
+            w[(ytr[tr_idx] == 0) & (gg == gid)] = OFFICIAL_MIX[name] * 3.0
+        print(f"  official mixture: QCD x{OFFICIAL_MIX['QCD']*3:.3f}, "
+              f"W x{OFFICIAL_MIX['Wjets']*3:.3f}, tt x{OFFICIAL_MIX['tt']*3:.3f}")
     if args.tt_weight != 1.0:
-        w[gtr[tr_idx] == 2] = args.tt_weight
+        w[gtr[tr_idx] == 2] *= args.tt_weight
         print(f"  tt-weight {args.tt_weight}: {int((gtr[tr_idx] == 2).sum()):,} tt events")
     tW = torch.from_numpy(w)
     if args.gpu_batches:
@@ -222,7 +235,7 @@ def main():
 
     student.load_state_dict(torch.load(ckpt))
     ev = predict(student, Xev_t, Fev_t, device)
-    eval_auc, per_group, eff = auc_report(ev, yev, gev, f"student '{args.tag}' -- held-out EVAL slice")
+    eval_auc, per_group, eff, off_auc = auc_report(ev, yev, gev, f"student '{args.tag}' -- held-out EVAL slice")
     timing = measure_latency(student, Xev_t, Fev_t, device)
 
     pd_, d0, phi_macs = dims(args.phi), 5, 0
@@ -237,13 +250,15 @@ def main():
                    dropout=0.0, use_event_features=use_evt, event_scale=args.event_scale,
                    pool_norm=True, pool=args.pool, params=n_params, phi_macs=phi_macs,
                    n_particles=npart, n_particles_use=npart, eval_auc=eval_auc,
-                   val_auc=float(best), per_background_auc=per_group, signal_eff=eff,
+                   val_auc=float(best), per_background_auc=per_group, official_auc=off_auc, signal_eff=eff,
                    tt_weight=args.tt_weight, disagree_weight=args.disagree_weight,
+                   mixture=args.mixture,
                    epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
                    train_meta=meta_tr, eval_meta=meta_ev, timing=timing, history=history)
     (OUT_DIR / f"{args.tag}_summary.json").write_text(json.dumps(summary, indent=2))
     np.save(OUT_DIR / f"{args.tag}_eval_scores.npy", ev)
-    print(f"\n  {args.tag}: DISTILLED AUC = {eval_auc:.5f}  ({n_params:,} params, T={T}, alpha={alpha})")
+    print(f"\n  {args.tag}: even-thirds {eval_auc:.5f}  OFFICIAL {off_auc:.5f}  "
+          f"({n_params:,} params, T={T}, alpha={alpha})")
 
 
 if __name__ == "__main__":

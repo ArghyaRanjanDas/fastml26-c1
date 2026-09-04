@@ -162,15 +162,32 @@ and heterogeneous widths are the whole point of HGQ.
 DeepSet lane uses (`team/export/eval_sample.npz`, rows matched back to `cache/eval100k`
 to recover the background labels, 100 % matched):
 
-| tag | project | EBOPs | max abs diff keras−HLS | AUC official (keras = HLS) | AUC even-3rds | vs QCD | vs tt | vs W+jets |
+| tag | project | EBOPs | max abs diff keras−HLS | AUC official HLS | AUC even-3rds HLS | vs QCD | vs tt | vs W+jets |
 |---|---|---|---|---|---|---|---|---|
 | `s300_b1e-7` | `projects/s300_b1e-7.tar.gz` (0.7 MB) | 1.37M | **0.0** | 0.8710 | 0.9020 | 0.9328 | 0.7967 | 0.9708 |
+| `q_lowE` | `projects/q_lowE.tar.gz` (0.5 MB) | **19.5k** | 1.05 on 2 of 5,000 events | 0.8333 | 0.8740 | 0.9175 | 0.7356 | 0.9616 |
 
 <sub>The per-background AUCs above are on the 5,000-event closure sample (850 QCD / 808 tt̄ /
 856 W+jets), so they are noisier than the `eval100k` numbers in RESULTS.md; on the full
 eval slice this checkpoint is official 0.87454 / even-thirds 0.90283.</sub>
 
-**What I need from this one:** it is a deliberately under-regularized calibration point, not
+**These two bracket the design space by ~70x in EBOPs on the same architecture** — that is
+the point of sending both. `s300_b1e-7` is barely quantized; `q_lowE` is an HGQ2 run whose
+EBOPs penalty was (deliberately, then instructively) far too strong, so most of its
+multipliers have been pruned to near-zero bit width. Whatever LUT numbers come back, the two
+points give the slope, and the production runs land between them.
+
+**Honest correction to the closure claim.** `s300_b1e-7` is exactly bit-exact (max |Δ| = 0.0
+over all 5,000 events). `q_lowE` is not: **2 events out of 5,000 (0.04 %) disagree**, one of
+them by 1.05 on a score that spans −4.7 … +5.2. Mean |Δ| is 0.00023 and both AUCs agree to
+four decimals (0.87400 keras vs 0.87406 HLS), so it does not move any reported number — but
+"bit-exact by construction" is true of the normally-regularized designs and *not* of this
+extreme one, and it should not be stated without that caveat. Cause not yet isolated; the
+shape (two isolated events, not a distribution shift) points at a rounding tie or a wrap at
+an accumulator boundary in a layer whose bit width HGQ has driven to almost nothing, rather
+than at a precision shortfall.
+
+**What I need from these:** it is a deliberately under-regularized calibration point, not
 the final design — a short 10-epoch QAT on `train300k` at `beta0=1e-7`. Its purpose is to
 measure **LUT (and FF/DSP/latency) per EBOP** for this architecture, so the EBOPs target for
 the long runs can be set from a measured number instead of the ~1:1 LUT:EBOPs implied by

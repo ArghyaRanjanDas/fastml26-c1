@@ -26,6 +26,26 @@ from models import MODELS, count_params
 OUT_DIR = Path(__file__).resolve().parent / "runs"
 GROUP_NAME = {v: k for k, v in GROUP_ID.items()}
 
+# Background composition of the organizers' eval parquet, counted directly from
+# ~/hack-data/C1_HH4b/eval (1,101,842 background events against 1,000,384 signal):
+#   QCD_HT250toInf                100,482   0.0912
+#   WJetsToLNu + WJetsToQQ        400,812   0.3638
+#   tt hadronic/lep/semiLep       600,548   0.5450
+# Our caches are an even three-way split, so the pooled AUC we print is NOT the
+# scored one. Pooled AUC is exactly the fraction-weighted mean of the per-group
+# AUCs -- AUC = P(s_sig > s_bkg) and the background is a mixture, so
+# P = sum_g w_g P(s_sig > s_bkg,g) -- which means the official number can be
+# recovered from per-group AUCs measured on any mixture. The scored metric is
+# 55% tt, so it is dominated by our weakest background.
+OFFICIAL_MIX = {"QCD": 0.0912, "Wjets": 0.3638, "tt": 0.5450}
+
+
+def official_auc(per_group: dict) -> float | None:
+    """0.0912*QCD + 0.3638*W + 0.5450*tt -- the AUC on the organizers' mixture."""
+    if not all(g in per_group for g in OFFICIAL_MIX):
+        return None
+    return sum(w * per_group[g] for g, w in OFFICIAL_MIX.items())
+
 
 def set_seed(seed: int):
     np.random.seed(seed)
@@ -65,13 +85,17 @@ def auc_report(scores: np.ndarray, y: np.ndarray, group: np.ndarray, title: str)
         print(f"    vs {name:<6s}: AUC {per_group[name]:.5f}"
               f"  ({int((y[sel] == 0).sum())} bkg events)")
 
+    off = official_auc(per_group)
+    if off is not None:
+        print(f"  OFFICIAL-MIXTURE AUC (0.0912 QCD + 0.3638 W + 0.5450 tt): {off:.5f}")
+
     # signal efficiency at fixed background rejection -- the trigger-relevant view
     eff, bkg = {}, scores[y == 0]
     for rej in (0.99, 0.999):
         thr = np.quantile(bkg, rej)
         eff[str(rej)] = float((scores[sig] > thr).mean())
         print(f"    signal eff @ {rej * 100:g}% bkg rejection: {eff[str(rej)]:.4f}")
-    return float(auc), per_group, eff
+    return float(auc), per_group, eff, off
 
 
 def measure_latency(model, X: torch.Tensor, F: torch.Tensor, device):
@@ -254,7 +278,8 @@ def main():
     # ------------------------------------------------------------ evaluation
     auc_report(predict(model, Xva_t, Fva_t, device), yva, gva, "held-out validation (train split)")
     ev_scores = predict(model, Xev_t, Fev_t, device)
-    eval_auc, per_group, eff = auc_report(ev_scores, yev, gev, "held-out EVAL slice (eval/ directory)")
+    eval_auc, per_group, eff, off_auc = auc_report(
+        ev_scores, yev, gev, "held-out EVAL slice (eval/ directory)")
 
     timing = measure_latency(model, Xev_t, Fev_t, device)
     print(f"\n=== cost ===")
@@ -269,14 +294,16 @@ def main():
                    event_feature_names=list(EVENT_FEATURES) if use_evt else [],
                    params=n_params, phi_macs=phi_macs, n_particles=n_particles,
                    n_particles_use=args.n_particles_use, eval_auc=eval_auc, val_auc=float(best_auc),
-                   per_background_auc=per_group, signal_eff=eff,
+                   per_background_auc=per_group, official_auc=off_auc, signal_eff=eff,
                    epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
                    train_meta=meta_tr, eval_meta=meta_ev, timing=timing, history=history)
     (OUT_DIR / f"{run}_summary.json").write_text(json.dumps(summary, indent=2))
     np.save(OUT_DIR / f"{run}_eval_scores.npy", ev_scores)
 
     print("\n" + "=" * 66)
-    print(f"  {run}: BINARY AUC (HH_4b vs background, eval slice) = {eval_auc:.5f}")
+    print(f"  {run}: even-thirds AUC = {eval_auc:.5f}   "
+          f"OFFICIAL-MIXTURE AUC = {off_auc:.5f}" if off_auc else
+          f"  {run}: BINARY AUC = {eval_auc:.5f}")
     print(f"  params = {n_params:,}  phi_macs = {phi_macs:,}  particles = {n_particles}"
           f"   |   {timing['cpu_single_event_us']:.1f} us/event (CPU, batch 1)")
     print("=" * 66)

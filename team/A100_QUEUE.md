@@ -221,6 +221,22 @@ cd /work/users/das214/fastml26/fastml26-c1 && git pull
 
 ### c3-3 — QAT at the chosen beta, selected on the official mixture  `[running: 3e-6 + 1e-6]`
 
+> **c3 update 2026-09-04 01:10 — the betas in this block are too strong on `train1M`; use
+> `3e-7` and `1e-7`.** EBOPs decay is driven by *gradient steps*, not epochs, and train1M has
+> 3.4x the steps per epoch of the train300k screen the beta range was calibrated on. Measured
+> on the A10, same script, same seed model, `train1M`:
+>
+> | beta0 | ep 1 | ep 2 | ep 3 | ep 4 | ep 6 | ep 8 | val official at ep 8 |
+> |---|---|---|---|---|---|---|---|
+> | 3e-6 | 2.47M | 1.19M | 588k | — | 56k | **19k** | 0.841 |
+> | 1e-6 | 2.47M | 1.38M | 846k | 537k | — | — | (still ramping) |
+>
+> `3e-6` lands at 19k EBOPs — two orders of magnitude *below* the ~350k target — and pays
+> 0.041 official AUC for it. If c3-3's 3e-6 run is still going, let it finish anyway (it is
+> the low-EBOPs end of the Pareto curve and worth one point), but **please run `3e-7` and
+> `1e-7` next in preference to anything else in this block.** The A10 is covering `3e-6`,
+> `1e-6` and `3e-7` on the 3,073-weight student; the 5,233-weight one is yours.
+
 Two things changed under c3-1 while it was running, and this job is the corrected version.
 **Run it after c3-1 finishes; if c3-1 has not started its third beta yet, kill it and run this
 instead** — c3-1's checkpoints are selected on the wrong criterion (see below), so its AUC

@@ -55,9 +55,13 @@ class ValAUC(keras.callbacks.Callback):
     """Per-epoch AUC on the held-out slice of the training cache; keeps the best
     weights in memory (Keras' ModelCheckpoint cannot see a metric we compute here)."""
 
-    def __init__(self, x, y, ebops=False, select_from=1, group=None):
+    def __init__(self, x, y, ebops=False, select_from=1, group=None, ckpt=None):
         super().__init__()
         self.x, self.y, self.ebops, self.group = x, y, ebops, group
+        # Write the best-so-far weights to disk every time they improve, so a long QAT
+        # run can be converted and handed to the synthesis box before it finishes.
+        self.ckpt = ckpt
+        self.partial = None      # set once the config is known, for in-flight summaries
         # Under an EBOPs penalty the first epochs have both the highest AUC and the
         # highest bit widths, so selecting on AUC over the whole run would hand back a
         # model that never paid the penalty. Only epochs from `select_from` on -- i.e.
@@ -88,7 +92,15 @@ class ValAUC(keras.callbacks.Callback):
             self.best, flag = auc, "  *"
             self.best_ebops = rec.get("ebops")
             self.best_w = [np.array(w) for w in self.model.get_weights()]
+            if self.ckpt is not None:
+                self.model.save_weights(self.ckpt)
         self.history.append(rec)
+        if self.ckpt is not None and self.partial is not None and self.best_w is not None:
+            import json as _json
+            p = self.ckpt.parent / f"{self.ckpt.name.split('.weights')[0]}_summary.json"
+            p.write_text(_json.dumps({**self.partial, "partial": True,
+                                      "val_auc": self.best, "ebops": self.best_ebops,
+                                      "history": self.history}, indent=2))
         eb = f"  ebops={rec['ebops']:.0f}" if self.ebops and np.isfinite(rec.get("ebops", np.nan)) else ""
         off = f"  val_off={rec['val_official']:.5f}" if rec.get("val_official") else ""
         print(f"  epoch {epoch+1:3d}  loss={rec['loss']:.4f}  val_auc={rec['val_auc']:.5f}"
@@ -183,6 +195,7 @@ def main():
                   loss=make_loss(args.temperature, args.alpha))
 
     cb_val = ValAUC([Xtr[va], Ftr[va]], ytr[va], group=gtr[va], ebops=args.quantized,
+                    ckpt=RUNS / f"{args.tag}.weights.h5",
                     select_from=(args.beta_ramp + 1) if (args.quantized and args.beta0) else 1)
     callbacks = [cb_val]
     if args.quantized:
@@ -193,6 +206,9 @@ def main():
             callbacks.append(BetaScheduler(
                 lambda ep: 0.0 if ep < 1 else args.beta0 * min(1.0, ep / args.beta_ramp)))
 
+    cb_val.partial = dict(run=args.tag, model="attn_student", cfg=cfg.to_dict(),
+                          quantized=args.quantized, beta0=args.beta0, rich=rich,
+                          params=int(nsyn), eval_tag=args.eval_tag)
     t0 = time.perf_counter()
     model.fit([Xtr[tr], Ftr[tr]], Yt[tr], batch_size=args.batch_size, epochs=args.epochs,
               shuffle=True, verbose=0, callbacks=callbacks)
