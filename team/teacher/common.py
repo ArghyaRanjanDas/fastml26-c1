@@ -53,16 +53,28 @@ def _check_constants():
     assert found == dict(PT_LOG_SCALE=PT_LOG_SCALE, ETA_SCALE=ETA_SCALE, DXY_CLIP=DXY_CLIP, GROUP_ID=GROUP_ID), found
 
 
-def load_cache(tag: str):
-    """Return X (N,16,5) f32, F (N,11) f32, y (N,) f32 in {0,1}, group (N,) int8, meta."""
-    d = CACHE_ROOT / tag
+def load_cache(tag: str, root: Path | None = None):
+    """Return X (N,16,5) f32, F (N,11) f32, y (N,) f32 in {0,1}, group (N,) int8, meta.
+
+    Enriched caches (c2's `*_s` layout and `train4M`: X 16x11, F 19) are accepted and
+    **sliced back to the base 5 / 11**. That is exact, not an approximation: the enriched
+    builder appends its derived channels after the originals, so X[..., :5] and F[:, :11]
+    are byte-identical to the raw cache (verified against train1M vs train1M_s). The teacher
+    derives its own per-candidate and pairwise quantities from the base 5 anyway, so it must
+    see the same inputs the student's base cache holds.
+    """
+    d = (root or CACHE_ROOT) / tag
     meta = json.loads((d / "meta.json").read_text())
-    X = np.load(d / "X.npy")
-    F = np.load(d / "F.npy")
+    X = np.load(d / "X.npy", mmap_mode="r")
+    F = np.load(d / "F.npy", mmap_mode="r")
     y = np.load(d / "y.npy").astype(np.float32)
     g = np.load(d / "group.npy")
-    assert len(X) == len(F) == len(y) == len(g) == meta["n_events"], tag
-    assert X.shape[1:] == (16, 5) and F.shape[1] == 11, (X.shape, F.shape)
+    n = meta.get("n_events", len(X))
+    assert len(X) == len(F) == len(y) == len(g) == n, (tag, len(X), len(F), len(y), len(g), n)
+    assert X.ndim == 3 and X.shape[1] == 16 and X.shape[2] >= 5, X.shape
+    assert F.ndim == 2 and F.shape[1] >= 11, F.shape
+    X = np.ascontiguousarray(X[:, :, :5])
+    F = np.ascontiguousarray(F[:, :11])
     return X, F, y, g, meta
 
 
