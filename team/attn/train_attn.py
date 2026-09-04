@@ -103,6 +103,8 @@ def main():
     ap.add_argument("--val-frac", type=float, default=0.05)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-distill", action="store_true")
+    ap.add_argument("--teacher", default="soft_targets",
+                    help="prefix of the published soft targets in team/teacher/")
     args = ap.parse_args()
 
     RUNS.mkdir(exist_ok=True)
@@ -111,7 +113,9 @@ def main():
 
     Xtr, Ftr, ytr, gtr, meta_tr = attn_data.load(args.train_tag, rich=rich)
     Xev, Fev, yev, gev, meta_ev = attn_data.load(args.eval_tag, rich=rich)
-    zt = attn_data.soft_targets(args.train_tag)
+    zt, tmeta = attn_data.soft_targets(args.train_tag, args.teacher)
+    print(f"teacher '{tmeta.get('source_run')}': eval AUC {tmeta.get('eval_auc')}, "
+          f"per-group {tmeta.get('eval_per_group')}")
     assert len(zt) == len(Xtr), f"{len(zt)} soft targets vs {len(Xtr)} rows"
     if args.no_distill:
         zt = np.zeros_like(zt)
@@ -187,6 +191,8 @@ def main():
                    quantized=args.quantized, beta0=args.beta0, init_from=args.init_from,
                    rich=rich, keras_params=int(model.count_params()), params=int(nsyn),
                    temperature=args.temperature, alpha=args.alpha, distill=not args.no_distill,
+                   teacher=tmeta.get("source_run"), teacher_auc=tmeta.get("eval_auc"),
+                   teacher_prefix=args.teacher,
                    epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, seed=args.seed,
                    train_tag=args.train_tag, eval_tag=args.eval_tag,
                    eval_auc=auc, val_auc=cb_val.best, per_background_auc=per_group,

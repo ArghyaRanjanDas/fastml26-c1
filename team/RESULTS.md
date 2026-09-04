@@ -943,7 +943,16 @@ student is capacity-limited, not supervision-limited, so effort is better spent 
 `1 + |z_teacher − z_student| / mean` adds +0.0008 overall *and* +0.0026 on tt with no
 measurable QCD/W cost, because it spends capacity on the events the student actually gets
 wrong rather than on a class label. The two compose: together +0.0062 on tt for −0.0019 on
-QCD, the best overall point of the five. Promoted to `train1M_s` as `rich_1M_w2dis`.
+QCD, the best overall point of the five. Promoted to `train1M_s` as `rich_1M_w2dis` (40 epochs), which confirms it at scale:
+
+| student | overall | vs QCD | **vs tt** | vs W+jets | sig eff @99.9% |
+|---|---|---|---|---|---|
+| `rkd_T2_a05` (current export) | **0.90901** | 0.93109 | 0.81188 | 0.97059 | 0.0541 |
+| `rich_1M_w2dis` (tt ×2 + disagree) | 0.90864 | 0.93578 | **0.81814** | 0.97200 | **0.0628** |
+
+Statistically tied overall (−0.0004) but **+0.0063 on tt**, the background that limits us,
+and +0.009 signal efficiency at 99.9% background rejection — the trigger-relevant number.
+Exported as `model_2777_rich_tt` alongside the incumbent so both can be synthesized.
 
 ## HGQ2 QAT (Lane 2)
 

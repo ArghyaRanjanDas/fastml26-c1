@@ -1,0 +1,395 @@
+{
+  "phi": [
+    32,
+    16,
+    8
+  ],
+  "rho": [
+    32,
+    16
+  ],
+  "n_features": 11,
+  "n_particles": 16,
+  "n_event_features": 19,
+  "run": "rich_1M_w2dis",
+  "params": 2745,
+  "eval_auc": 0.9086403459000001,
+  "architecture": {
+    "phi_activation": "relu",
+    "rho_activation": "relu",
+    "output_activation": "sigmoid",
+    "pooling": "mean+max concatenated (GlobalAveragePooling1D + GlobalMaxPooling1D)",
+    "event_features_concat": "after pooling",
+    "batchnorm": "folded into the first rho Linear; none to synthesize",
+    "equalized": false,
+    "equalization": "per-channel cross-layer scaling (ReLU positive homogeneity); function-preserving, keeps weights/activations inside ap_fixed range",
+    "layer_order": [
+      "phi.0.weight",
+      "phi.2.weight",
+      "phi.4.weight",
+      "rho.0.weight",
+      "rho.2.weight",
+      "out.weight"
+    ]
+  },
+  "particle_features": [
+    "log_pt",
+    "eta",
+    "dxy",
+    "cos_phi",
+    "sin_phi",
+    "lnz",
+    "lnE",
+    "cos_dphi_lead",
+    "sin_dphi_lead",
+    "deta_lead",
+    "abs_dxy"
+  ],
+  "particle_norm": {
+    "pt_log_scale": 8.0,
+    "eta_scale": 4.0,
+    "dxy_clip": 2.0
+  },
+  "particle_ordering": "leading n_particles candidates by descending pT",
+  "event_feature_names": [
+    "ht",
+    "lead_pt1",
+    "lead_pt2",
+    "lead_pt3",
+    "lead_pt4",
+    "n_cand",
+    "sum_abs_dxy",
+    "max_abs_dxy",
+    "mean_abs_dxy",
+    "m2",
+    "m4",
+    "iso_lead_pt",
+    "n_iso",
+    "p12_lndR",
+    "p13_lndR",
+    "p14_lndR",
+    "p23_lndR",
+    "p24_lndR",
+    "p34_lndR"
+  ],
+  "event_feature_norm": {
+    "ht": {
+      "transform": "log1p",
+      "mean": 5.4634,
+      "std": 0.4903
+    },
+    "lead_pt1": {
+      "transform": "log1p",
+      "mean": 3.6467,
+      "std": 0.6996
+    },
+    "lead_pt2": {
+      "transform": "log1p",
+      "mean": 3.2596,
+      "std": 0.6106
+    },
+    "lead_pt3": {
+      "transform": "log1p",
+      "mean": 3.0494,
+      "std": 0.5573
+    },
+    "lead_pt4": {
+      "transform": "log1p",
+      "mean": 2.9041,
+      "std": 0.5187
+    },
+    "n_cand": {
+      "transform": "linear",
+      "mean": 16.0,
+      "std": 0.0
+    },
+    "sum_abs_dxy": {
+      "transform": "log1p",
+      "mean": 0.366,
+      "std": 0.441
+    },
+    "max_abs_dxy": {
+      "transform": "log1p",
+      "mean": 0.251,
+      "std": 0.3318
+    },
+    "mean_abs_dxy": {
+      "transform": "linear",
+      "mean": 0.0385,
+      "std": 0.062
+    },
+    "m2": {
+      "transform": "log1p",
+      "mean": 3.4064,
+      "std": 1.5627
+    },
+    "m4": {
+      "transform": "log1p",
+      "mean": 4.8331,
+      "std": 0.8401
+    }
+  },
+  "event_feature_clip": 5.0,
+  "event_features_computed_from_n_candidates": 16,
+  "fold_check_max_abs_diff": 3.874301910400391e-06,
+  "group_ids": {
+    "0": "QCD",
+    "1": "HH_4b (signal)",
+    "2": "tt",
+    "3": "Wjets"
+  },
+  "particle_channels": [
+    "log_pt",
+    "eta",
+    "dxy",
+    "cos_phi",
+    "sin_phi",
+    "lnz",
+    "lnE",
+    "cos_dphi_lead",
+    "sin_dphi_lead",
+    "deta_lead",
+    "abs_dxy"
+  ],
+  "pool": "meanmax",
+  "input_spec": {
+    "note": "Candidates are the leading n_particles L1T_PUPPIPart entries by descending pT (the dataset stores >=415 per event, already sorted, so this is pure truncation). Every per-candidate channel is masked by pt>0. Event features are computed from the full 16-candidate list even when the particle branch is fed fewer.",
+    "n_particles": 16,
+    "particle_channels": [
+      {
+        "index": 0,
+        "name": "log_pt",
+        "formula": "log1p(pt) / 8"
+      },
+      {
+        "index": 1,
+        "name": "eta",
+        "formula": "eta / 4"
+      },
+      {
+        "index": 2,
+        "name": "dxy",
+        "formula": "clip(dxy, -2, 2) / 2"
+      },
+      {
+        "index": 3,
+        "name": "cos_phi",
+        "formula": "cos(phi)"
+      },
+      {
+        "index": 4,
+        "name": "sin_phi",
+        "formula": "sin(phi)"
+      },
+      {
+        "index": 5,
+        "name": "lnz",
+        "formula": "log(max(pt,1e-6) / HT) / 4      # HT = sum of pt over the kept candidates"
+      },
+      {
+        "index": 6,
+        "name": "lnE",
+        "formula": "log1p(pt * cosh(eta)) / 8"
+      },
+      {
+        "index": 7,
+        "name": "cos_dphi_lead",
+        "formula": "cos(dphi(phi, phi_lead))        # dphi wrapped to (-pi, pi]"
+      },
+      {
+        "index": 8,
+        "name": "sin_dphi_lead",
+        "formula": "sin(dphi(phi, phi_lead))"
+      },
+      {
+        "index": 9,
+        "name": "deta_lead",
+        "formula": "(eta - eta_lead) / 2"
+      },
+      {
+        "index": 10,
+        "name": "abs_dxy",
+        "formula": "abs(clip(dxy, -2, 2) / 2)"
+      }
+    ],
+    "particle_constants": {
+      "pt_log_scale": 8.0,
+      "eta_scale": 4.0,
+      "dxy_clip": 2.0
+    },
+    "event_features": [
+      {
+        "index": 0,
+        "name": "ht",
+        "formula": "sum of pt over the 16 candidates",
+        "transform": "log1p",
+        "mean": 5.4634,
+        "std": 0.4903,
+        "clip": 5.0
+      },
+      {
+        "index": 1,
+        "name": "lead_pt1",
+        "formula": "pt of candidate 0",
+        "transform": "log1p",
+        "mean": 3.6467,
+        "std": 0.6996,
+        "clip": 5.0
+      },
+      {
+        "index": 2,
+        "name": "lead_pt2",
+        "formula": "pt of candidate 1",
+        "transform": "log1p",
+        "mean": 3.2596,
+        "std": 0.6106,
+        "clip": 5.0
+      },
+      {
+        "index": 3,
+        "name": "lead_pt3",
+        "formula": "pt of candidate 2",
+        "transform": "log1p",
+        "mean": 3.0494,
+        "std": 0.5573,
+        "clip": 5.0
+      },
+      {
+        "index": 4,
+        "name": "lead_pt4",
+        "formula": "pt of candidate 3",
+        "transform": "log1p",
+        "mean": 2.9041,
+        "std": 0.5187,
+        "clip": 5.0
+      },
+      {
+        "index": 5,
+        "name": "n_cand",
+        "formula": "count of slots with pt > 0 (identically 16 in this dataset -- dead input)",
+        "transform": "linear",
+        "mean": 16.0,
+        "std": 0.0,
+        "clip": 5.0
+      },
+      {
+        "index": 6,
+        "name": "sum_abs_dxy",
+        "formula": "sum of |dxy| over candidates",
+        "transform": "log1p",
+        "mean": 0.366,
+        "std": 0.441,
+        "clip": 5.0
+      },
+      {
+        "index": 7,
+        "name": "max_abs_dxy",
+        "formula": "max of |dxy| over candidates",
+        "transform": "log1p",
+        "mean": 0.251,
+        "std": 0.3318,
+        "clip": 5.0
+      },
+      {
+        "index": 8,
+        "name": "mean_abs_dxy",
+        "formula": "sum|dxy| / n_cand",
+        "transform": "linear",
+        "mean": 0.0385,
+        "std": 0.062,
+        "clip": 5.0
+      },
+      {
+        "index": 9,
+        "name": "m2",
+        "formula": "invariant mass of the leading 2 candidates, massless approximation",
+        "transform": "log1p",
+        "mean": 3.4064,
+        "std": 1.5627,
+        "clip": 5.0
+      },
+      {
+        "index": 10,
+        "name": "m4",
+        "formula": "invariant mass of the leading 4 candidates, massless approximation",
+        "transform": "log1p",
+        "mean": 4.8331,
+        "std": 0.8401,
+        "clip": 5.0
+      },
+      {
+        "index": 11,
+        "name": "iso_lead_pt",
+        "formula": "pt of the most isolated hard candidate, where hard = pt > 10 GeV and iso_i = (sum of pt of other candidates with dR < 0.4) / pt_i; 0 if no hard candidate",
+        "transform": "log1p",
+        "mean": 3.026947259902954,
+        "std": 0.7088603377342224,
+        "clip": 5.0
+      },
+      {
+        "index": 12,
+        "name": "n_iso",
+        "formula": "count of hard candidates (pt > 10) with iso < 0.15",
+        "transform": "linear (already a log for *_lndR)",
+        "mean": 1.9260774850845337,
+        "std": 1.4960964918136597,
+        "clip": 5.0
+      },
+      {
+        "index": 13,
+        "name": "p12_lndR",
+        "formula": "log(dR) between leading candidates 1 and 2 (1-indexed), dR = sqrt(deta^2 + dphi^2)",
+        "transform": "linear (already a log for *_lndR)",
+        "mean": -0.11914470791816711,
+        "std": 1.8568891286849976,
+        "clip": 5.0
+      },
+      {
+        "index": 14,
+        "name": "p13_lndR",
+        "formula": "log(dR) between leading candidates 1 and 3 (1-indexed), dR = sqrt(deta^2 + dphi^2)",
+        "transform": "linear (already a log for *_lndR)",
+        "mean": -0.0016936459578573704,
+        "std": 1.7611557245254517,
+        "clip": 5.0
+      },
+      {
+        "index": 15,
+        "name": "p14_lndR",
+        "formula": "log(dR) between leading candidates 1 and 4 (1-indexed), dR = sqrt(deta^2 + dphi^2)",
+        "transform": "linear (already a log for *_lndR)",
+        "mean": 0.0858539268374443,
+        "std": 1.6804176568984985,
+        "clip": 5.0
+      },
+      {
+        "index": 16,
+        "name": "p23_lndR",
+        "formula": "log(dR) between leading candidates 2 and 3 (1-indexed), dR = sqrt(deta^2 + dphi^2)",
+        "transform": "linear (already a log for *_lndR)",
+        "mean": -0.02027125656604767,
+        "std": 1.7464011907577515,
+        "clip": 5.0
+      },
+      {
+        "index": 17,
+        "name": "p24_lndR",
+        "formula": "log(dR) between leading candidates 2 and 4 (1-indexed), dR = sqrt(deta^2 + dphi^2)",
+        "transform": "linear (already a log for *_lndR)",
+        "mean": 0.05629239231348038,
+        "std": 1.6767572164535522,
+        "clip": 5.0
+      },
+      {
+        "index": 18,
+        "name": "p34_lndR",
+        "formula": "log(dR) between leading candidates 3 and 4 (1-indexed), dR = sqrt(deta^2 + dphi^2)",
+        "transform": "linear (already a log for *_lndR)",
+        "mean": 0.07816465198993683,
+        "std": 1.645761251449585,
+        "clip": 5.0
+      }
+    ],
+    "event_feature_order": "as listed; standardized value = clip((transform(raw)-mean)/std, +-clip)"
+  }
+}

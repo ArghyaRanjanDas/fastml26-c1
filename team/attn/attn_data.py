@@ -66,8 +66,21 @@ def load(tag: str, rich: bool = True):
     return X, F, y, g, meta
 
 
-def soft_targets(tag: str) -> np.ndarray:
-    return np.load(TEAM / "teacher" / f"soft_targets_{tag}.npy").astype(np.float32).ravel()
+def soft_targets(tag: str, prefix: str = "soft_targets"):
+    """-> (logits, meta). `prefix` selects which published teacher to distil from:
+    "soft_targets" is whatever the teacher lane currently publishes, "soft_targets_dsbig"
+    pins the original BigDeepSet. 4-class files are reduced to the binary
+    HH-vs-rest logit with the recipe their own meta prescribes."""
+    d = TEAM / "teacher"
+    meta = json.loads((d / f"{prefix}_meta.json").read_text())
+    z = np.load(d / f"{prefix}_{tag}.npy").astype(np.float32)
+    if z.ndim == 2 and z.shape[1] > 1:
+        from scipy.special import logsumexp
+        order = meta["class_order"]
+        sig = order.index("HH_4b")
+        rest = [i for i in range(len(order)) if i != sig]
+        z = z[:, sig] - logsumexp(z[:, rest], axis=1)
+    return z.ravel(), meta
 
 
 def auc_report(scores, y, group, title):

@@ -19,3 +19,22 @@ after calibration: EBOPs=360,278
     vs Wjets  0.96401
   saved /home/jovyan/fastml26-hackathon/team/export/qat_b1e-6.keras
 ##### beta0=1e-5
+pre-QAT (warm-started, quantized forward): AUC 0.54830
+  epoch  1/12  val_auc=0.89154  EBOPs=850,098
+  epoch  2/12  val_auc=0.88854  EBOPs=660,412
+  epoch  3/12  val_auc=0.89017  EBOPs=637,954
+  epoch  4/12  val_auc=0.89144  EBOPs=638,952
+  epoch  5/12  val_auc=0.89218  EBOPs=642,459
+  epoch  6/12  val_auc=0.88237  EBOPs=488,033
+  epoch  7/12  val_auc=0.88090  EBOPs=466,339
+  epoch  8/12  val_auc=0.88387  EBOPs=465,527
+  epoch  9/12  val_auc=0.88428  EBOPs=465,984
+  epoch 10/12  val_auc=0.87861  EBOPs=340,861
+  epoch 11/12  val_auc=0.87669  EBOPs=319,429
+  epoch 12/12  val_auc=0.87778  EBOPs=323,749
+after calibration: EBOPs=319,993
+  eval AUC 0.87723
+    vs QCD    0.90194
+    vs tt     0.76721
+    vs Wjets  0.96253
+  saved /home/jovyan/fastml26-hackathon/team/export/qat_b1e-5.keras

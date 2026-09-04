@@ -105,8 +105,9 @@ def main():
     # Precision comes from the HGQ2 bit-exact pass, so the only thing this config
     # carries is the arithmetic strategy. distributed_arithmetic replaces every
     # multiplier with an adder tree (0 DSP) and requires reuse factor 1.
-    hls_config = {"Model": {"Strategy": args.strategy, "ReuseFactor": args.reuse,
-                            "Precision": "auto"}}
+    # No manual precision: HGQ2 carries its own per-parameter widths through hls4ml's
+    # bit-exact pass, and overriding them would throw away what QAT trained.
+    hls_config = {"Model": {"Strategy": args.strategy, "ReuseFactor": args.reuse}}
     hls_model = hls4ml.converters.convert_from_keras_model(
         model, backend="Vitis", io_type=args.io_type, output_dir=outdir,
         part=args.part, clock_period=args.clock, hls_config=hls_config)

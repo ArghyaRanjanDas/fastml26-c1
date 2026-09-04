@@ -1,0 +1,299 @@
+{
+  "run": "c2_canon3_wide",
+  "model": "deepset_plus",
+  "phi": [
+    32,
+    16,
+    8
+  ],
+  "rho": [
+    32,
+    16
+  ],
+  "dropout": 0.0,
+  "use_event_features": true,
+  "event_scale": 0.2,
+  "pool_norm": true,
+  "pool": "meanmax",
+  "event_feature_names": [
+    "ht",
+    "lead_pt1",
+    "lead_pt2",
+    "lead_pt3",
+    "lead_pt4",
+    "n_cand",
+    "sum_abs_dxy",
+    "max_abs_dxy",
+    "mean_abs_dxy",
+    "m2",
+    "m4"
+  ],
+  "params": 3161,
+  "phi_macs": 15872,
+  "n_particles": 16,
+  "n_particles_use": null,
+  "eval_auc": 0.9172623683499999,
+  "val_auc": 0.9191000014644966,
+  "per_background_auc": {
+    "QCD": 0.9436060168601685,
+    "tt": 0.831649858698587,
+    "Wjets": 0.9765294514609708
+  },
+  "signal_eff": {
+    "0.99": 0.23026,
+    "0.999": 0.06409
+  },
+  "epochs": 25,
+  "batch_size": 1024,
+  "lr": 0.002,
+  "train_meta": {
+    "tag": "train300k_c3",
+    "version": 2,
+    "split": "train",
+    "n_signal": 300000,
+    "n_background": 300000,
+    "n_particles": 16,
+    "n_features": 11,
+    "particle_channels": [
+      "log_pt",
+      "eta",
+      "dxy",
+      "cos_phi",
+      "sin_phi",
+      "lnz",
+      "lnE",
+      "cos_dphi_lead",
+      "sin_dphi_lead",
+      "deta_lead",
+      "abs_dxy"
+    ],
+    "event_features": [
+      "ht",
+      "lead_pt1",
+      "lead_pt2",
+      "lead_pt3",
+      "lead_pt4",
+      "n_cand",
+      "sum_abs_dxy",
+      "max_abs_dxy",
+      "mean_abs_dxy",
+      "m2",
+      "m4",
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndRc",
+      "p13_lndRc",
+      "p14_lndRc",
+      "p23_lndRc",
+      "p24_lndRc",
+      "p34_lndRc",
+      "dxy_ord2",
+      "dxy_ord3",
+      "dxy_ord4",
+      "dsig_ptw",
+      "dsig_sum",
+      "dsig_ord3",
+      "dsig_ord4",
+      "n_dsig_gt3",
+      "n_lep",
+      "lead_lep_pt",
+      "lep_pt_frac",
+      "charged_frac"
+    ],
+    "skip_files": 0,
+    "n_events": 599999,
+    "n_pos": 300000,
+    "n_neg": 299999
+  },
+  "eval_meta": {
+    "tag": "eval100k_c3",
+    "version": 2,
+    "split": "eval",
+    "n_signal": 100000,
+    "n_background": 100000,
+    "n_particles": 16,
+    "n_features": 11,
+    "particle_channels": [
+      "log_pt",
+      "eta",
+      "dxy",
+      "cos_phi",
+      "sin_phi",
+      "lnz",
+      "lnE",
+      "cos_dphi_lead",
+      "sin_dphi_lead",
+      "deta_lead",
+      "abs_dxy"
+    ],
+    "event_features": [
+      "ht",
+      "lead_pt1",
+      "lead_pt2",
+      "lead_pt3",
+      "lead_pt4",
+      "n_cand",
+      "sum_abs_dxy",
+      "max_abs_dxy",
+      "mean_abs_dxy",
+      "m2",
+      "m4",
+      "iso_lead_pt",
+      "n_iso",
+      "p12_lndRc",
+      "p13_lndRc",
+      "p14_lndRc",
+      "p23_lndRc",
+      "p24_lndRc",
+      "p34_lndRc",
+      "dxy_ord2",
+      "dxy_ord3",
+      "dxy_ord4",
+      "dsig_ptw",
+      "dsig_sum",
+      "dsig_ord3",
+      "dsig_ord4",
+      "n_dsig_gt3",
+      "n_lep",
+      "lead_lep_pt",
+      "lep_pt_frac",
+      "charged_frac"
+    ],
+    "skip_files": 0,
+    "n_events": 200000,
+    "n_pos": 100000,
+    "n_neg": 100000
+  },
+  "timing": {
+    "gpu_batched_us_per_event": 4.210702917362141,
+    "gpu_batch_size": 8192,
+    "cpu_single_event_us": 298.96124079823494
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.41915208870364773,
+      "val_auc": 0.9059223215509369
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.3753652497419144,
+      "val_auc": 0.9098929998645952
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.36985256193484933,
+      "val_auc": 0.9115647948245984
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.3666614140233686,
+      "val_auc": 0.9134870736851294
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.364578354856321,
+      "val_auc": 0.9131977578492179
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.36339222768452406,
+      "val_auc": 0.9152119366419265
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.3619991044391943,
+      "val_auc": 0.9156797293752726
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.36096835136413574,
+      "val_auc": 0.9156956904979803
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.3600741336422582,
+      "val_auc": 0.9161411874390826
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.3596076532152165,
+      "val_auc": 0.9163263640190237
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.3589306168357154,
+      "val_auc": 0.9165665614429278
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.3581155251280406,
+      "val_auc": 0.9167061308467384
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.3575411760151047,
+      "val_auc": 0.9177880254011692
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.3570389456382513,
+      "val_auc": 0.9178401155854405
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.3564495699342333,
+      "val_auc": 0.9182980396347862
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.355829655558606,
+      "val_auc": 0.9185134878459348
+    },
+    {
+      "epoch": 17,
+      "train_loss": 0.35528187728018645,
+      "val_auc": 0.918378405823798
+    },
+    {
+      "epoch": 18,
+      "train_loss": 0.35499751596116025,
+      "val_auc": 0.9188102100561306
+    },
+    {
+      "epoch": 19,
+      "train_loss": 0.35448840758153566,
+      "val_auc": 0.9190090604552816
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.3542862143756316,
+      "val_auc": 0.9190257582708328
+    },
+    {
+      "epoch": 21,
+      "train_loss": 0.3540073908596835,
+      "val_auc": 0.9190169962928237
+    },
+    {
+      "epoch": 22,
+      "train_loss": 0.3537240689461326,
+      "val_auc": 0.9190536664847268
+    },
+    {
+      "epoch": 23,
+      "train_loss": 0.35364506717424915,
+      "val_auc": 0.9190867137701182
+    },
+    {
+      "epoch": 24,
+      "train_loss": 0.3535722789321045,
+      "val_auc": 0.9191000014644966
+    },
+    {
+      "epoch": 25,
+      "train_loss": 0.3534679397573055,
+      "val_auc": 0.9190912200413521
+    }
+  ]
+}
