@@ -1180,6 +1180,14 @@ closure on team/export/eval_sample.npz (5,000 real eval events, Vitis, xcu200, 5
   max |keras - hls| = 0.0     AUC keras = AUC hls to all printed digits
 ```
 
+One caveat, found by testing a deliberately extreme point rather than assuming: on a design
+pushed to **19.5k EBOPs** — most multipliers pruned to almost no bit width — **2 events out of
+5,000 (0.04 %) disagree**, one by 1.05 on a score spanning −4.7 … +5.2. Mean |Δ| is 0.0002 and
+the AUCs still match to four decimals, so nothing reported here moves; but bit-exactness holds
+for the normally-regularized designs and not unconditionally, and the shape of the failure
+(two isolated events, not a distribution shift) looks like a rounding tie or a wrap at an
+accumulator boundary rather than a precision shortfall.
+
 So the quantized AUC **is** the FPGA AUC; there is no closure budget to reserve. What has to
 be managed instead is **EBOPs** (HGQ's differentiable proxy for the multiplier bill), through
 the `beta0` penalty. Calibration, since it is not obvious: the unregularized d=16 model sits

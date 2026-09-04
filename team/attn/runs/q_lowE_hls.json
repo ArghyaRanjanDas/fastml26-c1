@@ -1,0 +1,25 @@
+{
+  "run": "q_lowE",
+  "part": "xcu200-fsgd2104-2-e",
+  "clock": 5.0,
+  "io_type": "io_parallel",
+  "strategy": "distributed_arithmetic",
+  "reuse": 1,
+  "n_sample": 5000,
+  "max_abs_diff": 1.05078125,
+  "mean_abs_diff": 0.0002312500000698492,
+  "auc_keras_sample": 0.8739991686139277,
+  "auc_hls_sample": 0.874062210590924,
+  "per_background_auc_keras_sample": {
+    "QCD": 0.9173628791822441,
+    "tt": 0.7356003022868659,
+    "Wjets": 0.9615775915218682
+  },
+  "per_background_auc_hls_sample": {
+    "QCD": 0.9175493351000898,
+    "tt": 0.7356003022868659,
+    "Wjets": 0.9615775915218682
+  },
+  "project": "/home/jovyan/fastml26-hackathon/team/fpga/projects/q_lowE.tar.gz",
+  "project_mb": 0.52894
+}

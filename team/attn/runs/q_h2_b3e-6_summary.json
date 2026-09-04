@@ -1,0 +1,89 @@
+{
+  "run": "q_h2_b3e-6",
+  "model": "attn_student",
+  "cfg": {
+    "n_particles": 16,
+    "n_channels": 11,
+    "n_event": 11,
+    "d": 16,
+    "heads": 2,
+    "blocks": 1,
+    "mlp_ratio": 2,
+    "head_dim": 16,
+    "pool": "meanmax",
+    "residual": true
+  },
+  "quantized": true,
+  "beta0": 3e-06,
+  "rich": true,
+  "params": 3074,
+  "eval_tag": "eval100k",
+  "partial": true,
+  "val_auc": 0.8409234648065271,
+  "ebops": 19468.0,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 1.7837393283843994,
+      "val_auc": 0.8987023890454123,
+      "val_official": 0.8698249332038734,
+      "ebops": 2472206.0
+    },
+    {
+      "epoch": 2,
+      "loss": 2.4827194213867188,
+      "val_auc": 0.8985715104604203,
+      "val_official": 0.8689123006334346,
+      "ebops": 1187709.0
+    },
+    {
+      "epoch": 3,
+      "loss": 2.5099434852600098,
+      "val_auc": 0.8897631227873222,
+      "val_official": 0.8603475180474379,
+      "ebops": 588099.0
+    },
+    {
+      "epoch": 4,
+      "loss": 2.3647799491882324,
+      "val_auc": 0.8814718901771789,
+      "val_official": 0.8483133187666206,
+      "ebops": 347594.0
+    },
+    {
+      "epoch": 5,
+      "loss": 2.227018356323242,
+      "val_auc": 0.8764834255648769,
+      "val_official": 0.8406851652951401,
+      "ebops": 196426.0
+    },
+    {
+      "epoch": 6,
+      "loss": 2.0051915645599365,
+      "val_auc": 0.8693102342946614,
+      "val_official": 0.8366680496280521,
+      "ebops": 55963.0
+    },
+    {
+      "epoch": 7,
+      "loss": 1.9255543947219849,
+      "val_auc": 0.8713673178067656,
+      "val_official": 0.8365015137939636,
+      "ebops": 34419.0
+    },
+    {
+      "epoch": 8,
+      "loss": 1.8774226903915405,
+      "val_auc": 0.8779148739002889,
+      "val_official": 0.8409234648065271,
+      "ebops": 19468.0
+    },
+    {
+      "epoch": 9,
+      "loss": 1.8627218008041382,
+      "val_auc": 0.8746896878419956,
+      "val_official": 0.8371955542476164,
+      "ebops": 16288.0
+    }
+  ]
+}
