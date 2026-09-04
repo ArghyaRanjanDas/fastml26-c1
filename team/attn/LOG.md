@@ -75,3 +75,53 @@ End-to-end proof on a throwaway 2-epoch quantized run: convert → `compile()` �
 `team/export/eval_sample.npz`, **max |keras − hls| = 0.0**, AUC identical to 5 decimals.
 So for this lane the closure question that cost the DeepSet lane 0.014 AUC does not exist:
 HGQ2 + hls4ml is bit-exact by construction, and the number to manage is EBOPs, not overflow.
+
+## Step 3 — distillation, and what each piece is worth  ✅
+
+All rows: `train1M` (2M events), 30 epochs, AdamW + cosine, KD from `ds_big_s0`'s logits
+at T=2, alpha 0.7, evaluated on the same `eval100k` slice as every other lane.
+"params" is kernels + biases, i.e. what gets synthesized.
+
+| run | change from `a_d16` | params | AUC | vs QCD | vs tt | vs W+jets |
+|---|---|---|---|---|---|---|
+| `a_d16_b0` | **no attention** (0 blocks) | 913 | 0.89067 | 0.9289 | 0.7726 | 0.9706 |
+| `a_d8` | d = 8 | 1,129 | 0.89651 | 0.9320 | 0.7866 | 0.9709 |
+| `a_d16_nomlp` | no per-token MLP | 2,001 | 0.90272 | 0.9376 | 0.7979 | 0.9726 |
+| `a_d16_base` | 5 base channels, no `rich` | 2,977 | 0.90119 | 0.9310 | 0.8016 | 0.9709 |
+| **`a_d16`** | — | **3,073** | **0.90818** | 0.9403 | 0.8100 | 0.9742 |
+| `a_d16_nokd` | no distillation | 3,073 | 0.90648 | 0.9390 | 0.8072 | 0.9732 |
+| `a_d16_h2` | 2 heads | 3,073 | 0.90864 | 0.9396 | 0.8136 | 0.9728 |
+| `a_d16_b2` | 2 blocks | 5,233 | 0.91138 | 0.9422 | 0.8168 | 0.9752 |
+| `a_d32` | d = 32 | 10,033 | 0.91267 | 0.9429 | 0.8198 | 0.9753 |
+
+Reference points: DeepSet student `B1e_16p_1M` 0.88687 / tt 0.75869; the rich DeepSet
+`model_2777_rich` 0.9077 float / 0.9062 synthesized; teacher `ds_big_s0` 0.91515 / tt 0.82612.
+
+Reading the ablations:
+
+* **Attention is worth +0.0175 overall and +0.037 vs tt** (`a_d16_b0` → `a_d16`), holding
+  the embedding, the pooling, the head, the inputs and the training recipe fixed. That is
+  the answer to the question the lane was set up to ask, and it is the same size as the
+  jump c2 measured from adding the six rich channels — the two are additive, not
+  alternative: `a_d16_base` (attention, no rich) is 0.90119 and `a_d16_b0` (rich, no
+  attention) is 0.89067, while both together are 0.90818.
+* **Distillation is worth +0.0017** (`a_d16_nokd` → `a_d16`) — real but small; the
+  attention student gets most of the teacher's advantage from its own architecture rather
+  than from the soft targets. For the DeepSet student the same teacher was worth more,
+  because the DeepSet had no way to represent what the teacher knew.
+* **Depth beats width.** `a_d16_b2` (2 blocks, 5,233 params) ≈ `a_d32` (1 block, 10,033)
+  at half the weights and a quarter of the attention arithmetic.
+* `a_d16` reaches **97 % of the teacher's margin over the DeepSet student**
+  ((0.90818 − 0.88687) / (0.91515 − 0.88687)) with 3,073 weights against the teacher's 72,717.
+
+## Step 4 — QAT: calibrating the EBOPs penalty
+
+`beta0` multiplies EBOPs directly in the loss. Unregularized, the d=16 model sits at
+**2.36M EBOPs**, so `beta0 = 1e-5` puts 24 loss units against a BCE of ~1.8 — the model is
+crushed to 29k EBOPs and 0.858 val AUC within five epochs. **The useful range is 1e-7 to
+3e-6**, not the 1e-5..1e-4 that a first guess suggests. (Recorded because the same wrong
+guess had already gone into the A100 queue; corrected there in `A100_QUEUE.md`.)
+
+Practical note: HGQ2 QAT costs ~7 min/epoch on 2M events against ~40 s for the float model
+— every weight and activation carries its own trainable bit width — so the float sweep runs
+on the A10 and the long QAT runs go to the A100 queue.
